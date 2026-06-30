@@ -1,0 +1,515 @@
+:root {
+    --access-black: #000000;
+    --access-blue: #1A4798;
+    --access-blue-dark: #143a7e;
+    --access-red: #ED1C24;
+    --access-gold: #F4C027;
+    --access-paper: #fffdf5;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+body.app-blank {
+    background: var(--access-paper);
+}
+
+body.auth-bg {
+    background-image: url("../../images/bg.webp");
+}
+
+[data-bs-theme="dark"] body.auth-bg {
+    background-image: url("../../images/bg.webp");
+}
+
+.auth-container {
+    min-height: 100vh;
+}
+
+.access-red,
+.access-text-red {
+    color: var(--access-red) !important;
+}
+
+.access-text-blue {
+    color: var(--access-blue) !important;
+}
+
+.access-bg-blue {
+    background-color: var(--access-blue) !important;
+}
+
+.access-bg-red {
+    background-color: var(--access-red) !important;
+}
+
+.access-bg-gold {
+    background-color: var(--access-gold) !important;
+}
+
+.access-bg-black {
+    background-color: var(--access-black) !important;
+}
+
+.access-btn-primary {
+    background: var(--access-red);
+    color: #fff;
+}
+
+.access-btn-primary:hover {
+    background: #b9151b;
+    color: #fff;
+}
+
+.access-btn-light {
+    background: #fff;
+    border: 1px solid #e4e6ef;
+    color: var(--access-red);
+}
+
+.access-header {
+    backdrop-filter: blur(14px);
+    background: rgba(255, 253, 245, .92);
+}
+
+.access-hero {
+    background:
+        linear-gradient(90deg, rgba(255, 253, 245, .97), rgba(255, 253, 245, .86), rgba(255, 253, 245, .55)),
+        radial-gradient(circle at 88% 18%, rgba(244, 192, 39, .34), transparent 32%),
+        linear-gradient(135deg, #fff7e8, #fff6d9 50%, #ffe7e8);
+    min-height: calc(100vh - 76px);
+}
+
+.access-hero-title {
+    font-size: clamp(3rem, 7vw, 5.5rem);
+    letter-spacing: 0;
+}
+
+.access-visual {
+    background:
+        linear-gradient(180deg, rgba(145, 18, 24, .82), rgba(0, 0, 0, .86)),
+        linear-gradient(135deg, var(--access-red), var(--access-gold) 48%, #8f1218);
+    min-height: 560px;
+}
+
+.access-grid {
+    background-image:
+        linear-gradient(90deg, rgba(255, 255, 255, .12) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255, 255, 255, .12) 1px, transparent 1px);
+    background-size: 54px 54px;
+    inset: 0;
+    opacity: .45;
+    position: absolute;
+}
+
+.access-mini-calendar-grid {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+.dashboard-menu-link-tight {
+    gap: 2px;
+}
+
+.access-section {
+    padding: 90px 0;
+}
+
+.access-kicker {
+    color: var(--access-red);
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.access-gradient {
+    background: linear-gradient(135deg, var(--access-black), var(--access-red));
+}
+
+.access-card {
+    border: 1px solid #e4e6ef;
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.access-card:hover {
+    box-shadow: 0 1rem 2.25rem rgba(0, 0, 0, .08);
+    transform: translateY(-3px);
+}
+
+.access-educator-card {
+    background: #fff;
+    border: 1px solid rgba(26, 71, 152, .14);
+    border-radius: 8px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, .06);
+    overflow: hidden;
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.access-educator-card:hover {
+    border-color: rgba(237, 28, 36, .28);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, .1);
+    transform: translateY(-3px);
+}
+
+.access-educator-photo {
+    align-items: center;
+    background:
+        linear-gradient(135deg, rgba(237, 28, 36, .08), rgba(244, 192, 39, .22)),
+        #f8f9fb;
+    display: flex;
+    justify-content: center;
+    min-height: 210px;
+    padding: 20px;
+}
+
+.access-educator-photo img {
+    aspect-ratio: 1;
+    border: 5px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .18);
+    height: 150px;
+    object-fit: cover;
+    width: 150px;
+}
+
+.access-educator-initials {
+    align-items: center;
+    aspect-ratio: 1;
+    background: var(--access-red);
+    border: 5px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .18);
+    color: #fff;
+    display: flex;
+    font-size: 3rem;
+    font-weight: 900;
+    justify-content: center;
+    width: 150px;
+}
+
+.access-educator-body {
+    padding: 24px;
+}
+
+.access-educator-label {
+    color: var(--access-red);
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.access-educator-name {
+    color: #071437;
+    font-size: 1.12rem;
+    font-weight: 900;
+    line-height: 1.25;
+    margin-bottom: 18px;
+}
+
+.access-educator-meta {
+    display: grid;
+    gap: 12px;
+}
+
+.access-educator-meta-item {
+    border-left: 3px solid rgba(237, 28, 36, .25);
+    padding-left: 12px;
+}
+
+.access-educator-meta-item span {
+    color: #78829d;
+    display: block;
+    font-size: .75rem;
+    font-weight: 800;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+}
+
+.access-educator-meta-item strong {
+    color: #252f4a;
+    display: block;
+    font-size: .92rem;
+    line-height: 1.35;
+}
+
+.registration-page,
+.registration-overview-page {
+    background:
+        linear-gradient(120deg, rgba(255, 255, 255, .94), rgba(255, 253, 245, .88)),
+        radial-gradient(circle at top right, rgba(244, 192, 39, .28), transparent 34%),
+        radial-gradient(circle at bottom left, rgba(26, 71, 152, .2), transparent 34%);
+    min-height: 100vh;
+    width: 100%;
+}
+
+.access-login-page {
+    background:
+        linear-gradient(120deg, rgba(255, 255, 255, .96), rgba(255, 253, 245, .9)),
+        url("../../images/bg.webp") center bottom / cover no-repeat;
+    min-height: 100vh;
+    width: 100%;
+}
+
+.access-login-shell {
+    min-height: 100vh;
+}
+
+.access-brand-panel {
+    background:
+        linear-gradient(135deg, rgba(237, 28, 36, .98), rgba(145, 18, 24, .98)),
+        linear-gradient(90deg, rgba(244, 192, 39, .2), rgba(255, 255, 255, .08));
+    border-radius: 8px;
+    color: #fff;
+    min-height: 620px;
+    overflow: hidden;
+    position: relative;
+}
+
+.access-brand-panel::after {
+    background: rgba(244, 192, 39, .92);
+    bottom: -90px;
+    content: "";
+    height: 220px;
+    position: absolute;
+    right: -60px;
+    transform: rotate(-8deg);
+    width: 360px;
+}
+
+.access-brand-content {
+    position: relative;
+    z-index: 1;
+}
+
+.access-form-panel {
+    background: #fff;
+    border: 1px solid rgba(26, 71, 152, .12);
+    border-radius: 8px;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, .08);
+}
+
+.access-logo-mark {
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.access-password-toggle {
+    height: 44px;
+    width: 44px;
+}
+
+.access-dashboard-hero {
+    background:
+        linear-gradient(135deg, rgba(237, 28, 36, .98), rgba(145, 18, 24, .98)),
+        linear-gradient(90deg, rgba(244, 192, 39, .22), rgba(255, 255, 255, .08));
+    border-radius: 8px;
+    box-shadow: 0 24px 54px rgba(237, 28, 36, .18);
+    color: #fff;
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
+}
+
+.access-dashboard-hero::before {
+    background-image:
+        linear-gradient(90deg, rgba(255, 255, 255, .1) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255, 255, 255, .1) 1px, transparent 1px);
+    background-size: 48px 48px;
+    content: "";
+    inset: 0;
+    opacity: .42;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+
+.access-dashboard-hero::after {
+    background: rgba(244, 192, 39, .9);
+    bottom: -85px;
+    content: "";
+    height: 180px;
+    pointer-events: none;
+    position: absolute;
+    right: -55px;
+    transform: rotate(-8deg);
+    width: 320px;
+    z-index: 0;
+}
+
+.access-dashboard-hero-content {
+    position: relative;
+    z-index: 1;
+}
+
+.access-dashboard-card {
+    border: 1px solid #e4e6ef;
+    border-radius: 8px;
+    height: 100%;
+}
+
+.access-venue-estimate-panel {
+    height: auto;
+}
+
+.access-venue-estimate-list {
+    align-items: stretch;
+}
+
+.access-venue-estimate-card {
+    background: #fff;
+    border: 1px solid #edf0f6;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.access-venue-estimate-barangays {
+    max-height: 92px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.access-dashboard-container {
+    padding-bottom: 5rem !important;
+}
+
+body.access-dashboard-no-aside.header-fixed[data-kt-sticky-header=on] #kt_wrapper {
+    padding-top: 240px;
+}
+
+body.access-dashboard-no-aside.header-fixed[data-kt-sticky-header=on] .header {
+    left: 0;
+}
+
+body>.menu-sub-dropdown {
+    z-index: 1100 !important;
+}
+
+.access-dashboard-surface {
+    color: #1f2937;
+}
+
+.access-dashboard-panel {
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 8px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+
+.access-stat-card,
+.access-table-card {
+    box-shadow: 0 14px 38px rgba(15, 23, 42, .06);
+}
+
+.access-stat-card {
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.access-stat-card:hover {
+    border-color: rgba(26, 71, 152, .22);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, .09);
+    transform: translateY(-2px);
+}
+
+.access-dashboard-tabs {
+    border-radius: 8px;
+    gap: 4px;
+}
+
+.access-dashboard-tabs .nav-link {
+    align-items: center;
+    border-radius: 6px;
+    color: #5e6278;
+    display: inline-flex;
+    font-weight: 700;
+    min-height: 42px;
+}
+
+.access-dashboard-tabs .nav-link.active {
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .08);
+    color: var(--access-blue);
+}
+
+.access-search-field {
+    position: relative;
+}
+
+.access-search-field > i {
+    left: 1rem;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+}
+
+.access-search-field .form-control {
+    padding-left: 3.25rem;
+}
+
+.access-dashboard-table thead th {
+    background: #f8f9fb;
+    border-bottom: 0;
+    padding-bottom: 1rem;
+    padding-top: 1rem;
+}
+
+.access-dashboard-table thead th:first-child {
+    border-bottom-left-radius: 8px;
+    border-top-left-radius: 8px;
+}
+
+.access-dashboard-table thead th:last-child {
+    border-bottom-right-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.access-table-card .dataTables_wrapper .row {
+    align-items: center;
+}
+
+.access-table-card .dataTables_info {
+    color: #7e8299;
+    font-weight: 600;
+    padding-top: .75rem;
+}
+
+.access-table-card .dataTables_paginate {
+    padding-top: .75rem;
+}
+
+@media (max-width: 991.98px) {
+    .access-hero,
+    .access-login-shell {
+        min-height: auto;
+    }
+
+    .access-visual {
+        min-height: 470px;
+    }
+
+    .access-brand-panel {
+        min-height: auto;
+    }
+
+    .access-dashboard-tabs {
+        width: 100%;
+    }
+
+    .access-dashboard-tabs .nav-item,
+    .access-dashboard-tabs .nav-link {
+        width: 100%;
+    }
+
+    .access-dashboard-tabs .nav-link {
+        justify-content: center;
+    }
+
+}

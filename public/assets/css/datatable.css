@@ -1,0 +1,13 @@
+.dataTables_paginate .btn-light-danger {
+    color: #f1416c !important;
+}
+
+.dataTables_paginate .btn-light-danger:hover {
+    background-color: rgba(241, 65, 108, 0.15) !important;
+    border-color: #f1416c !important;
+    color: #f1416c !important;
+}
+
+.dataTables_paginate .btn-danger:hover {
+    background-color: #d9214e !important;
+}
