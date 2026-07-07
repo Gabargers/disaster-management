@@ -8,28 +8,27 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
-class SuperAdminSeeder extends Seeder
+class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
         $role = Role::firstOrCreate([
-            'name' => 'superadmin',
+            'name' => 'admin',
             'guard_name' => 'web',
         ]);
 
+        $role->syncPermissions(Permission::pluck('name')->toArray());
+
         $user = User::firstOrCreate(
-            ['email' => 'superadmin@gmail.com'],
+            ['email' => 'admin@gmail.com'],
             [
                 'uuid' => (string) Str::uuid(),
-                'name' => 'Super Admin',
-                'first_name' => 'Super',
-                'middle_name' => 'System',
+                'name' => 'System Admin',
+                'first_name' => 'System',
+                'middle_name' => 'Test',
                 'last_name' => 'Admin',
-                'contact_number' => '09271852712',
+                'contact_number' => '09000000000',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]
@@ -39,8 +38,6 @@ class SuperAdminSeeder extends Seeder
             $user->assignRole($role);
         }
 
-        $allPermissions = Permission::pluck('name')->toArray();
-        $role->syncPermissions($allPermissions);
-        $user->syncPermissions($allPermissions);
+        $user->syncPermissions(Permission::pluck('name')->toArray());
     }
 }

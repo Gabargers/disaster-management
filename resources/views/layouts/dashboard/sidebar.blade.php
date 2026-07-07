@@ -20,50 +20,37 @@
 
                 @php
                     $role = Auth::user()->getRoleNames()->first();
+                    $isSuperAdmin = auth()->user()->hasRole('superadmin');
 
-                    $canMedicine = auth()
-                        ->user()
-                        ->hasAnyPermission(['view medicine table', 'store medicine', 'update medicine', 'delete medicine']);
+                    $canBarangay =
+                        $isSuperAdmin ||
+                        auth()
+                            ->user()
+                            ->hasAnyPermission(['view barangay table', 'store barangay', 'update barangay', 'delete barangay']);
 
-                    $canSpecies = auth()
-                        ->user()
-                        ->hasAnyPermission(['view pet species table', 'store pet species', 'update pet species', 'delete pet species']);
-
-                    $canBreed = auth()
-                        ->user()
-                        ->hasAnyPermission(['view pet breed table', 'store pet breed', 'update pet breed', 'delete pet breed']);
-
-                    $canTeam = auth()
-                        ->user()
-                        ->hasAnyPermission(['view team table', 'store team', 'update team', 'delete team']);
-
-                    $canViolation = auth()
-                        ->user()
-                        ->hasAnyPermission(['view violation table', 'store violation', 'update violation', 'delete violation']);
-
-                    $canService = auth()
-                        ->user()
-                        ->hasAnyPermission(['view service table', 'store service', 'update service', 'delete service']);
-
-                    $canAppointmentSchedule = auth()
-                        ->user()
-                        ->hasAnyPermission([
-                            'view appointment schedule table',
-                            'store appointment schedule',
-                            'update appointment schedule',
-                            'delete appointment schedule',
-                        ]);
-
-                    $cmsRoutes = ['medicine.index', 'species.index', 'breed.index', 'team.index', 'violation.index', 'service.index'];
+                    $barangayRoute = \Illuminate\Support\Facades\Route::has($role . '.barangay.index') ? $role . '.barangay.index' : null;
+                    $cmsRoutes = $barangayRoute ? ['barangay.index'] : [];
 
                     $cmsOpen = collect($cmsRoutes)->map(fn($r) => "$role.$r")->contains(fn($routeName) => request()->routeIs($routeName));
 
-                    $canCms = $canMedicine || $canSpecies || $canBreed || $canTeam || $canViolation || $canService;
+                    $canCms = $canBarangay && $barangayRoute;
+                    $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
+                    $disasterOpen = request()->routeIs('disaster.*');
+                    $disasterModules = [
+                        ['route' => 'disaster.tciss.index', 'label' => 'TCISS', 'icon' => 'ki-magnifier'],
+                        ['route' => 'disaster.dafac.index', 'label' => 'DAFAC', 'icon' => 'ki-notepad-edit'],
+                        ['route' => 'disaster.duplicates.index', 'label' => 'Duplicates', 'icon' => 'ki-copy'],
+                        ['route' => 'disaster.validation.index', 'label' => 'Validation', 'icon' => 'ki-shield-tick'],
+                        ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar'],
+                        ['route' => 'disaster.payouts.index', 'label' => 'Payouts', 'icon' => 'ki-calendar-8'],
+                        ['route' => 'disaster.requirements.index', 'label' => 'Requirements', 'icon' => 'ki-folder-down'],
+                        ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document'],
+                    ];
                 @endphp
 
                 <div class="menu-item py-2">
-                    <a href="{{ route($role . '.dashboard') }}"
-                        class="menu-link menu-center flex-column {{ request()->routeIs($role . '.dashboard') ? 'active' : '' }}"
+                    <a href="{{ route($dashboardRoute) }}"
+                        class="menu-link menu-center flex-column {{ request()->routeIs($dashboardRoute) ? 'active' : '' }}"
                         style="gap: 2px;">
 
                         <span class="menu-icon me-0">
@@ -79,45 +66,46 @@
                     </a>
                 </div>
 
-                @can('view pet table')
-                    <div class="menu-item py-2">
-                        <a href="{{ route($role . '.pet.index') }}"
-                            class="menu-link menu-center flex-column {{ request()->routeIs($role . '.pet.*') ? 'active' : '' }}"
-                            style="gap: 2px;">
+                <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"
+                    class="menu-item py-2 {{ $disasterOpen ? 'show here' : '' }}">
 
-                            <span class="menu-icon me-0">
-                                <i class="ki-duotone ki-abstract-26 fs-2x">
-                                    <span class="path1"></span>
-                                    <span class="path2"></span>
-                                </i>
-                            </span>
+                    <span class="menu-link menu-center flex-column {{ $disasterOpen ? 'active' : '' }}" style="gap: 2px;">
+                        <span class="menu-icon me-0">
+                            <i class="ki-duotone ki-rescue fs-2x">
+                                <span class="path1"></span>
+                                <span class="path2"></span>
+                            </i>
+                        </span>
 
-                            <span class="menu-title fs-7 text-center">
-                                Pets
-                            </span>
-                        </a>
+                        <span class="menu-title fs-7 text-center">
+                            Disaster
+                        </span>
+                    </span>
+
+                    <div class="menu-sub menu-sub-dropdown px-2 py-4 w-275px mh-75 overflow-auto">
+                        <div class="menu-item">
+                            <div class="menu-content">
+                                <span class="menu-section fs-5 fw-bolder ps-1 py-1">Assistance Workflow</span>
+                            </div>
+                        </div>
+
+                        @foreach ($disasterModules as $module)
+                            <div class="menu-item">
+                                <a class="menu-link {{ request()->routeIs($module['route']) ? 'active' : '' }}"
+                                    href="{{ route($module['route']) }}">
+                                    <span class="menu-bullet">
+                                        <i class="ki-duotone {{ $module['icon'] }} fs-3">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                            <span class="path3"></span>
+                                        </i>
+                                    </span>
+                                    <span class="menu-title">{{ $module['label'] }}</span>
+                                </a>
+                            </div>
+                        @endforeach
                     </div>
-                @endcan
-                
-                @can('view appointment schedule table')
-                    <div class="menu-item py-2">
-                        <a href="{{ route($role . '.schedule.index') }}"
-                            class="menu-link menu-center flex-column {{ request()->routeIs($role . '.schedule.*') ? 'active' : '' }}"
-                            style="gap: 2px;">
-
-                            <span class="menu-icon me-0">
-                                <i class="ki-duotone ki-calendar-8 fs-2x">
-                                    <span class="path1"></span>
-                                    <span class="path2"></span>
-                                </i>
-                            </span>
-
-                            <span class="menu-title fs-7 text-center">
-                                Schedule
-                            </span>
-                        </a>
-                    </div>
-                @endcan
+                </div>
 
                 @if ($canCms)
                     <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"
@@ -145,84 +133,19 @@
                             </div>
 
                             <div class="menu-item">
-                                @if ($canMedicine)
-                                    <a class="menu-link {{ request()->routeIs($role . '.medicine.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.medicine.index') }}">
+                                @if ($canBarangay)
+                                    <a class="menu-link {{ request()->routeIs($role . '.barangay.*') ? 'active' : '' }}"
+                                        href="{{ route($barangayRoute) }}">
                                         <span class="menu-bullet">
-                                            <i class="ki-duotone ki-capsule fs-3">
+                                            <i class="ki-duotone ki-geolocation fs-3">
                                                 <span class="path1"></span>
                                                 <span class="path2"></span>
                                             </i>
                                         </span>
-                                        <span class="menu-title">Medicine</span>
+                                        <span class="menu-title">Barangay</span>
                                     </a>
                                 @endif
 
-                                @if ($canSpecies)
-                                    <a class="menu-link {{ request()->routeIs($role . '.species.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.species.index') }}">
-                                        <span class="menu-bullet">
-                                            <i class="ki-duotone ki-abstract-26 fs-3">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                            </i>
-                                        </span>
-                                        <span class="menu-title">Species</span>
-                                    </a>
-                                @endif
-
-                                @if ($canBreed)
-                                    <a class="menu-link {{ request()->routeIs($role . '.breed.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.breed.index') }}">
-                                        <span class="menu-bullet">
-                                            <i class="ki-duotone ki-category fs-3">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                            </i>
-                                        </span>
-                                        <span class="menu-title">Breed</span>
-                                    </a>
-                                @endif
-
-                                @if ($canTeam)
-                                    <a class="menu-link {{ request()->routeIs($role . '.team.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.team.index') }}">
-                                        <span class="menu-bullet">
-                                            <i class="ki-duotone ki-people fs-3">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                                <span class="path3"></span>
-                                            </i>
-                                        </span>
-                                        <span class="menu-title">Team</span>
-                                    </a>
-                                @endif
-
-                                @if ($canViolation)
-                                    <a class="menu-link {{ request()->routeIs($role . '.violation.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.violation.index') }}">
-                                        <span class="menu-bullet">
-                                            <i class="ki-duotone ki-shield-cross fs-3">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                            </i>
-                                        </span>
-                                        <span class="menu-title">Violation</span>
-                                    </a>
-                                @endif
-
-                                @if ($canService)
-                                    <a class="menu-link {{ request()->routeIs($role . '.service.*') ? 'active' : '' }}"
-                                        href="{{ route($role . '.service.index') }}">
-                                        <span class="menu-bullet">
-                                            <i class="ki-duotone ki-notepad-edit fs-3">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                            </i>
-                                        </span>
-                                        <span class="menu-title">Service</span>
-                                    </a>
-                                @endif
                             </div>
                         </div>
                     </div>

@@ -16,10 +16,9 @@ class DatabaseServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom([
             database_path('migrations/auth'),
             database_path('migrations/cms'),
-            database_path('migrations/file'),
+            database_path('migrations/disaster'),
             database_path('migrations/logs'),
             database_path('migrations/others'),
-            database_path('migrations/pet'),
         ]);
     }
 }

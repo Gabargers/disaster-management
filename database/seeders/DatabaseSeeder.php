@@ -2,19 +2,21 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Database\Seeders\Auth\SuperAdminSeeder;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Database\Seeders\Auth\AdminSeeder;
+use Database\Seeders\Disaster\DisasterRoleSeeder;
+use Database\Seeders\Disaster\DisasterDemoDataSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     public function run(): void
     {
         $this->call([
+            DisasterRoleSeeder::class,
             SuperAdminSeeder::class,
+            AdminSeeder::class,
+            DisasterDemoDataSeeder::class,
         ]);
     }
 }
