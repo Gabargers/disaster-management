@@ -35,14 +35,13 @@
 
                     $canCms = $canBarangay && $barangayRoute;
                     $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
-                    $disasterOpen = request()->routeIs('disaster.*');
                     $disasterModules = [
                         ['route' => 'disaster.tciss.index', 'label' => 'TCISS', 'icon' => 'ki-magnifier'],
                         ['route' => 'disaster.dafac.index', 'label' => 'DAFAC', 'icon' => 'ki-notepad-edit'],
                         ['route' => 'disaster.duplicates.index', 'label' => 'Duplicates', 'icon' => 'ki-copy'],
                         ['route' => 'disaster.validation.index', 'label' => 'Validation', 'icon' => 'ki-shield-tick'],
                         ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar'],
-                        ['route' => 'disaster.payouts.index', 'label' => 'Payouts', 'icon' => 'ki-calendar-8'],
+                        ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation'],
                         ['route' => 'disaster.requirements.index', 'label' => 'Requirements', 'icon' => 'ki-folder-down'],
                         ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document'],
                     ];
@@ -66,46 +65,24 @@
                     </a>
                 </div>
 
-                <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"
-                    class="menu-item py-2 {{ $disasterOpen ? 'show here' : '' }}">
-
-                    <span class="menu-link menu-center flex-column {{ $disasterOpen ? 'active' : '' }}" style="gap: 2px;">
-                        <span class="menu-icon me-0">
-                            <i class="ki-duotone ki-rescue fs-2x">
-                                <span class="path1"></span>
-                                <span class="path2"></span>
-                            </i>
-                        </span>
-
-                        <span class="menu-title fs-7 text-center">
-                            Disaster
-                        </span>
-                    </span>
-
-                    <div class="menu-sub menu-sub-dropdown px-2 py-4 w-275px mh-75 overflow-auto">
-                        <div class="menu-item">
-                            <div class="menu-content">
-                                <span class="menu-section fs-5 fw-bolder ps-1 py-1">Assistance Workflow</span>
-                            </div>
-                        </div>
-
-                        @foreach ($disasterModules as $module)
-                            <div class="menu-item">
-                                <a class="menu-link {{ request()->routeIs($module['route']) ? 'active' : '' }}"
-                                    href="{{ route($module['route']) }}">
-                                    <span class="menu-bullet">
-                                        <i class="ki-duotone {{ $module['icon'] }} fs-3">
-                                            <span class="path1"></span>
-                                            <span class="path2"></span>
-                                            <span class="path3"></span>
-                                        </i>
-                                    </span>
-                                    <span class="menu-title">{{ $module['label'] }}</span>
-                                </a>
-                            </div>
-                        @endforeach
+                @foreach ($disasterModules as $module)
+                    <div class="menu-item py-2">
+                        <a href="{{ route($module['route']) }}"
+                            class="menu-link menu-center flex-column {{ request()->routeIs($module['route']) ? 'active' : '' }}"
+                            style="gap: 2px;">
+                            <span class="menu-icon me-0">
+                                <i class="ki-duotone {{ $module['icon'] }} fs-2x">
+                                    <span class="path1"></span>
+                                    <span class="path2"></span>
+                                    <span class="path3"></span>
+                                </i>
+                            </span>
+                            <span class="menu-title fs-7 text-center">
+                                {{ $module['label'] }}
+                            </span>
+                        </a>
                     </div>
-                </div>
+                @endforeach
 
                 @if ($canCms)
                     <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"

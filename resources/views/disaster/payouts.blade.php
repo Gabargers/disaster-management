@@ -1,48 +1,19 @@
 @extends('layouts.dashboard.main')
-
 @section('content')
-    <div class="card card-flush shadow-sm">
-        <div class="card-header">
-            <div class="card-title">
-                <h3 class="fw-bold mb-0">Payout Scheduling and Distribution</h3>
-            </div>
-            <div class="card-toolbar">
-                <button class="btn btn-danger btn-sm">Create Schedule</button>
-            </div>
-        </div>
-        <div class="card-body">
-            <div class="row g-6 mb-8">
-                @foreach (['Payout Date', 'Assistance Kind', 'Quantity / Amount', 'Provider', 'Released By'] as $field)
-                    <div class="col-md">
-                        <label class="form-label fw-bold">{{ $field }}</label>
-                        <input class="form-control form-control-solid" type="{{ $field === 'Payout Date' ? 'date' : 'text' }}">
-                    </div>
-                @endforeach
-            </div>
-            <div class="table-responsive">
-                <table class="table align-middle table-row-dashed fs-6 gy-4">
-                    <thead>
-                        <tr class="text-muted fw-bold text-uppercase fs-7">
-                            <th>Family</th>
-                            <th>Schedule</th>
-                            <th>Status</th>
-                            <th>Release Photo</th>
-                            <th class="text-end">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (['Maria Santos' => 'Scheduled', 'Lorna Reyes' => 'Released'] as $name => $status)
-                            <tr>
-                                <td class="fw-bold">{{ $name }}</td>
-                                <td>July 15, 2026 - City Hall Quadrangle</td>
-                                <td><span class="badge badge-light-{{ $status === 'Released' ? 'success' : 'primary' }}">{{ $status }}</span></td>
-                                <td><button class="btn btn-sm btn-light">Upload</button></td>
-                                <td class="text-end"><button class="btn btn-sm btn-light-success">Mark Released</button></td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+<div class="card card-flush shadow-sm">
+    <div class="card-header align-items-center"><div class="card-title"><div><h3 class="fw-bold mb-1">Evacuation Center Management</h3><div class="text-muted fs-7">Open a center to manage its evacuees and beneficiary payouts.</div></div></div><div class="card-toolbar"><button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#centerFormModal"><i class="ki-duotone ki-plus fs-3"><span class="path1"></span><span class="path2"></span></i>Create Center</button></div></div>
+    <div class="card-body pt-0"><div class="table-responsive"><table class="table align-middle table-row-dashed gy-5"><thead><tr class="text-muted fw-bold text-uppercase fs-7"><th>Center</th><th>Barangay / Address</th><th>Contact</th><th>Capacity</th><th>Families</th><th>Payout</th><th>Status</th><th class="text-end">Action</th></tr></thead><tbody>
+    @forelse($centers as $center)<tr><td><div class="fw-bold text-gray-900">{{ $center->name }}</div><div class="text-muted fs-7">{{ $center->disaster?->name }}</div></td><td>{{ $center->barangay?->name }}<div class="text-muted fs-7">{{ $center->address }}</div></td><td>{{ $center->contact_person ?: '—' }}<div class="text-muted fs-7">{{ $center->contact_number }}</div></td><td>{{ number_format($center->capacity) }}</td><td><span class="badge badge-light-primary">{{ $center->active_assignments_count }}</span></td><td><span class="badge badge-light-{{ $center->payout_availability === 'AVAILABLE' ? 'success' : 'warning' }}">{{ str_replace('_',' ',$center->payout_availability) }}</span></td><td><span class="badge badge-light-{{ $center->status === 'ACTIVE' ? 'success' : 'secondary' }}">{{ $center->status }}</span></td><td class="text-end"><a class="btn btn-sm btn-primary" href="{{ route('disaster.payouts.centers.show',$center) }}">Open <i class="ki-duotone ki-arrow-right fs-4"><span class="path1"></span><span class="path2"></span></i></a></td></tr>
+    @empty<tr><td colspan="8"><div class="text-center py-12"><i class="ki-duotone ki-geolocation-home fs-3x text-muted"><span class="path1"></span><span class="path2"></span></i><h4 class="mt-4">No evacuation centers yet</h4><div class="text-muted">Create a center to begin assigning evacuated families.</div></div></td></tr>@endforelse
+    </tbody></table></div></div>
+</div>
 @endsection
+
+@push('modals')
+<div class="modal fade" id="centerFormModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><form class="modal-content" id="center-form"><div class="modal-header"><h2>Create Evacuation Center</h2><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="alert alert-danger d-none" id="center-error"></div><div class="row g-5">
+@foreach([['name','Evacuation Center Name','text'],['address','Complete Address','text'],['contact_person','Contact Person','text'],['contact_number','Contact Number','tel'],['capacity','Capacity','number']] as [$name,$label,$type])<div class="col-md-6"><label class="form-label {{ in_array($name,['name','address','capacity'])?'required':'' }}">{{ $label }}</label><input name="{{ $name }}" type="{{ $type }}" class="form-control form-control-solid" @if($name==='capacity') min="1" @endif></div>@endforeach
+<div class="col-md-6"><label class="form-label required">Barangay</label><select name="barangay_id" class="form-select form-select-solid">@foreach($barangays as $x)<option value="{{ $x->id }}">{{ $x->name }}</option>@endforeach</select></div><div class="col-md-6"><label class="form-label required">Disaster</label><select name="disaster_id" class="form-select form-select-solid">@foreach($disasters as $x)<option value="{{ $x->id }}">{{ $x->name }}</option>@endforeach</select></div><input type="hidden" name="status" value="ACTIVE"><input type="hidden" name="payout_availability" value="NOT_AVAILABLE"><div class="col-12"><label class="form-label">Notes</label><textarea name="description" class="form-control form-control-solid"></textarea></div></div></div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Center</button></div></form></div></div>
+@endpush
+@push('scripts')
+<script>(()=>{const form=document.querySelector('#center-form');form.addEventListener('submit',async e=>{e.preventDefault();const button=form.querySelector('[type=submit]');button.disabled=true;try{const response=await fetch(`{{ route('disaster.payouts.centers.store') }}`,{method:'POST',headers:{Accept:'application/json','X-CSRF-TOKEN':document.querySelector('meta[name=csrf-token]').content},body:new FormData(form)}),data=await response.json();if(!response.ok)throw new Error(data.message||Object.values(data.errors||{}).flat().join('\n'));await Swal.fire({text:data.message,icon:'success'});location.reload()}catch(error){document.querySelector('#center-error').textContent=error.message;document.querySelector('#center-error').classList.remove('d-none');button.disabled=false}})})();</script>
+@endpush

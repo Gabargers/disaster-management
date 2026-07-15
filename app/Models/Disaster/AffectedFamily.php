@@ -29,6 +29,7 @@ class AffectedFamily extends Model
         'age',
         'occupation',
         'monthly_income',
+        'contact_number',
         'complete_address',
         'house_ownership',
         'housing_condition',
@@ -76,6 +77,7 @@ class AffectedFamily extends Model
     public function buildHouseholdHash(): string
     {
         return hash('sha256', Str::lower(implode('|', [
+            $this->disaster_id,
             $this->barangay_id,
             $this->household_head_surname,
             $this->household_head_given_name,
@@ -109,6 +111,8 @@ class AffectedFamily extends Model
         return $this->hasOne(DafacRecord::class);
     }
 
+    public function tcissMasterlistRecord(): HasOne { return $this->hasOne(TcissMasterlistRecord::class); }
+
     public function validationRecords(): HasMany
     {
         return $this->hasMany(ValidationRecord::class);
@@ -128,6 +132,11 @@ class AffectedFamily extends Model
     {
         return $this->hasMany(PayoutRelease::class);
     }
+
+    public function workflowHistories(): HasMany { return $this->hasMany(WorkflowHistory::class); }
+    public function payrollRecord(): HasOne { return $this->hasOne(PayrollRecord::class); }
+    public function uploadedDocuments() { return $this->morphMany(UploadedDocument::class, 'documentable'); }
+    public function auditLogs() { return $this->morphMany(AuditLog::class, 'auditable'); }
 
     public function postPayoutRequirement(): HasOne
     {

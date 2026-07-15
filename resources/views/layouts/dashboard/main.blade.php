@@ -17,6 +17,21 @@
         [x-cloak] {
             display: none !important;
         }
+
+        /* Keep page titles readable over the light and detailed header artwork. */
+        #kt_header .page-title h1 {
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(16, 42, 86, 0.12);
+            border-radius: 0.65rem;
+            padding: 0.65rem 1rem;
+            box-shadow: 0 2px 10px rgba(24, 28, 50, 0.12);
+        }
+
+        #kt_header .page-title h1 > span,
+        #kt_header .page-title h1 > small {
+            color: #102a56 !important;
+            text-shadow: none;
+        }
     </style>
 
     <script>

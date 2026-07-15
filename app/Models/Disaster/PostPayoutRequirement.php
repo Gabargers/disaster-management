@@ -19,6 +19,7 @@ class PostPayoutRequirement extends Model
         'barangay_certification_status',
         'verified_by',
         'verified_at',
+        'notes',
     ];
 
     protected function casts(): array

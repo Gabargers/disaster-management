@@ -1,108 +1,43 @@
 @extends('layouts.dashboard.main')
 
 @section('content')
+<form id="dafac-form" novalidate enctype="multipart/form-data">
+    <div id="form-alert" class="alert alert-danger d-none"></div>
     <div class="card card-flush shadow-sm mb-8">
-        <div class="card-header">
-            <div class="card-title">
-                <h3 class="fw-bold mb-0">Disaster Assistance Family Access Card</h3>
-            </div>
-            <div class="card-toolbar">
-                <button type="button" class="btn btn-danger btn-sm">Save Intake</button>
-            </div>
-        </div>
+        <div class="card-header"><div class="card-title"><h3 class="fw-bold mb-0">Disaster Assistance Family Access Card</h3></div><div class="card-toolbar"><button id="save-intake" type="submit" class="btn btn-danger btn-sm"><span class="indicator-label">Save Intake</span><span class="indicator-progress">Saving Intake... <span class="spinner-border spinner-border-sm ms-2"></span></span></button></div></div>
         <div class="card-body">
             <div class="row g-6">
-                @foreach (['Barangay', 'Date', 'Evacuation Center', 'Type of Disaster'] as $field)
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">{{ $field }}</label>
-                        <input type="{{ $field === 'Date' ? 'date' : 'text' }}" class="form-control form-control-solid">
-                    </div>
-                @endforeach
+                <div class="col-md-3"><label class="form-label required fw-bold">Disaster / Incident</label><select name="disaster_id" class="form-select form-select-solid"><option value="">Select incident</option>@foreach($disasters as $d)<option value="{{ $d->id }}">{{ $d->name }} ({{ $d->type }})</option>@endforeach</select><div class="invalid-feedback"></div></div>
+                <div class="col-md-3"><label class="form-label required fw-bold">Barangay</label><select name="barangay_id" class="form-select form-select-solid"><option value="">Select barangay</option>@foreach($barangays as $b)<option value="{{ $b->id }}">{{ $b->name }}</option>@endforeach</select><div class="invalid-feedback"></div></div>
+                <div class="col-md-3"><label class="form-label required fw-bold">Intake Date</label><input name="intake_date" type="date" max="{{ now()->format('Y-m-d') }}" value="{{ now()->format('Y-m-d') }}" class="form-control form-control-solid"><div class="invalid-feedback"></div></div>
+                <div class="col-md-3"><label class="form-label fw-bold">Evacuation Center</label><select name="evacuation_center_id" class="form-select form-select-solid"><option value="">None</option>@foreach($evacuationCenters as $c)<option value="{{ $c->id }}" data-barangay="{{ $c->barangay_id }}">{{ $c->name }}</option>@endforeach</select><div class="invalid-feedback"></div></div>
             </div>
-
-            <div class="separator my-8"></div>
-
-            <h4 class="fw-bold mb-5">Head of Family</h4>
+            <div class="separator my-8"></div><h4 class="fw-bold mb-5">Head of Family</h4>
             <div class="row g-6">
-                @foreach (['Surname', 'Given Name', 'Middle Name', 'Complete Address', 'Birthdate', 'Age', 'Occupation', 'Monthly Income'] as $field)
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">{{ $field }}</label>
-                        <input type="{{ $field === 'Birthdate' ? 'date' : 'text' }}" class="form-control form-control-solid">
-                    </div>
+                @foreach([['surname','Surname',true,'text'],['given_name','Given Name',true,'text'],['middle_name','Middle Name',false,'text'],['complete_address','Complete Address',true,'text'],['birthdate','Birthdate',true,'date'],['age','Age',false,'number'],['occupation','Occupation',false,'text'],['monthly_income','Monthly Income',false,'number'],['contact_number','Contact Number',false,'text']] as [$name,$label,$required,$type])
+                <div class="col-md-3"><label class="form-label {{ $required ? 'required' : '' }} fw-bold">{{ $label }}</label><input name="household_head[{{ $name }}]" type="{{ $type }}" @if($name==='birthdate') max="{{ now()->format('Y-m-d') }}" @endif @if($name==='age') readonly @endif @if($name==='monthly_income') min="0" step="0.01" @endif class="form-control form-control-solid"><div class="invalid-feedback"></div></div>
                 @endforeach
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">House Ownership</label>
-                    <select class="form-select form-select-solid">
-                        <option>Owner</option>
-                        <option>Renter</option>
-                        <option>Sharer</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Housing Condition</label>
-                    <select class="form-select form-select-solid">
-                        <option>Totally Damaged</option>
-                        <option>Partially Damaged</option>
-                        <option>Water Damage</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Health Condition</label>
-                    <select class="form-select form-select-solid">
-                        <option>With Illness</option>
-                        <option>Injured</option>
-                        <option>Missing</option>
-                        <option>Dead</option>
-                    </select>
-                </div>
+                <div class="col-md-4"><label class="form-label required fw-bold">House Ownership</label><select name="house_ownership" class="form-select form-select-solid"><option value="">Select</option>@foreach(['Owner','Renter','Sharer'] as $v)<option>{{ $v }}</option>@endforeach</select><div class="invalid-feedback"></div></div>
+                <div class="col-md-4"><label class="form-label required fw-bold">Housing Condition</label><select name="housing_condition" class="form-select form-select-solid"><option value="">Select</option>@foreach(['Totally Damaged','Partially Damaged','Water Damage'] as $v)<option>{{ $v }}</option>@endforeach</select><div class="invalid-feedback"></div></div>
+                <div class="col-md-4"><label class="form-label fw-bold">Health Condition</label><select name="health_condition" class="form-select form-select-solid"><option value="">None</option>@foreach(['With Illness','Injured','Missing','Dead'] as $v)<option>{{ $v }}</option>@endforeach</select><div class="invalid-feedback"></div></div>
             </div>
         </div>
     </div>
-
-    <div class="card card-flush shadow-sm">
-        <div class="card-header">
-            <div class="card-title">
-                <h3 class="fw-bold mb-0">Family Composition</h3>
-            </div>
-            <div class="card-toolbar">
-                <button type="button" class="btn btn-light-primary btn-sm">Add Member</button>
-            </div>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table align-middle table-row-dashed fs-6 gy-4">
-                    <thead>
-                        <tr class="fw-bold text-muted text-uppercase fs-7">
-                            <th>Name</th>
-                            <th>Birthdate</th>
-                            <th>Age</th>
-                            <th>Relationship</th>
-                            <th>Sex</th>
-                            <th>Occupation / Income</th>
-                            <th>Health</th>
-                            <th>Remarks Codes</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><input class="form-control form-control-solid" placeholder="Full name"></td>
-                            <td><input class="form-control form-control-solid" type="date"></td>
-                            <td><input class="form-control form-control-solid" placeholder="Auto"></td>
-                            <td><input class="form-control form-control-solid"></td>
-                            <td><select class="form-select form-select-solid"><option>Female</option><option>Male</option></select></td>
-                            <td><input class="form-control form-control-solid"></td>
-                            <td><input class="form-control form-control-solid"></td>
-                            <td><input class="form-control form-control-solid" placeholder="A, B, C"></td>
-                            <td><button class="btn btn-icon btn-light-danger"><i class="ki-duotone ki-trash fs-3"><span class="path1"></span><span class="path2"></span></i></button></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="notice bg-light rounded border border-dashed p-5 mt-6">
-                <span class="fw-bold">Codes:</span>
-                <span class="text-muted">A Elderly, B Person with Disabilities, C Infant, D Pregnant Women, E Lactating Mother, F Children</span>
-            </div>
-        </div>
-    </div>
+    <div class="card card-flush shadow-sm mb-8"><div class="card-header"><div class="card-title"><h3 class="fw-bold mb-0">Family Composition</h3></div><div class="card-toolbar"><button id="add-member" type="button" class="btn btn-light-primary btn-sm">Add Member</button></div></div><div class="card-body"><div class="table-responsive"><table class="table align-middle table-row-dashed fs-6 gy-4"><thead><tr class="fw-bold text-muted text-uppercase fs-7"><th>Name</th><th>Birthdate / Age</th><th>Relationship</th><th>Sex</th><th>Occupation / Income</th><th>Health</th><th>Remarks</th><th></th></tr></thead><tbody id="members"></tbody></table></div><div class="notice bg-light rounded border border-dashed p-5 mt-6"><span class="fw-bold">Codes:</span> <span class="text-muted">A Elderly, B Person with Disabilities, C Infant, D Pregnant Woman, E Lactating Mother, F Child</span></div></div></div>
+    <div class="card card-flush shadow-sm"><div class="card-header"><div class="card-title"><h3 class="fw-bold mb-0">Attestation</h3></div></div><div class="card-body"><div class="row g-6"><div class="col-md-4"><label class="form-label required fw-bold">Interviewed By</label><input name="interviewed_by" class="form-control form-control-solid" value="{{ auth()->user()->name }}"><div class="invalid-feedback"></div></div><div class="col-md-4"><label class="form-label fw-bold">Signature</label><input name="signature" type="file" accept="image/jpeg,image/png,application/pdf" class="form-control form-control-solid"><div class="invalid-feedback"></div></div><div class="col-md-4"><label class="form-label fw-bold">Thumbmark</label><input name="thumbmark" type="file" accept="image/jpeg,image/png,application/pdf" class="form-control form-control-solid"><div class="invalid-feedback"></div></div><div class="col-12"><label class="form-check form-check-custom form-check-solid"><input name="attestation_confirmed" value="1" type="checkbox" class="form-check-input"><span class="form-check-label">I confirm that the information was attested by the household representative.</span></label><div class="invalid-feedback d-block"></div></div></div></div></div>
+</form>
 @endsection
+
+@push('scripts')
+<script>
+(()=>{const form=document.querySelector('#dafac-form'),members=document.querySelector('#members'),button=document.querySelector('#save-intake'),alertBox=document.querySelector('#form-alert');let saving=false,index=0;
+const age=d=>{if(!d)return'';const b=new Date(d+'T00:00:00'),n=new Date();let a=n.getFullYear()-b.getFullYear();if(n<new Date(n.getFullYear(),b.getMonth(),b.getDate()))a--;return Math.max(0,a)};
+function row(){const i=index++;return `<tr data-index="${i}"><td><input name="family_members[${i}][full_name]" class="form-control form-control-solid" placeholder="Full name"><div class="invalid-feedback"></div></td><td><input name="family_members[${i}][birthdate]" type="date" max="{{ now()->format('Y-m-d') }}" class="form-control form-control-solid member-birthdate"><input tabindex="-1" readonly class="form-control form-control-solid mt-2 member-age" placeholder="Age"><div class="invalid-feedback"></div></td><td><input name="family_members[${i}][relationship_to_head]" class="form-control form-control-solid"><div class="invalid-feedback"></div></td><td><select name="family_members[${i}][sex]" class="form-select form-select-solid"><option value="">Select</option><option>Female</option><option>Male</option></select><div class="invalid-feedback"></div></td><td><input name="family_members[${i}][occupation]" class="form-control form-control-solid" placeholder="Occupation"><input name="family_members[${i}][monthly_income]" type="number" min="0" step="0.01" class="form-control form-control-solid mt-2" placeholder="Income"><div class="invalid-feedback"></div></td><td><select name="family_members[${i}][health_condition]" class="form-select form-select-solid"><option value="">None</option><option>With Illness</option><option>Injured</option><option>Missing</option><option>Dead</option></select><div class="invalid-feedback"></div></td><td><select name="family_members[${i}][remarks_code]" class="form-select form-select-solid"><option value="">None</option>${['A','B','C','D','E','F'].map(x=>`<option>${x}</option>`).join('')}</select><div class="invalid-feedback"></div></td><td><button type="button" class="btn btn-icon btn-light-danger remove-member"><i class="ki-duotone ki-trash fs-3"><span class="path1"></span><span class="path2"></span></i></button></td></tr>`}
+function add(){members.insertAdjacentHTML('beforeend',row())} add();document.querySelector('#add-member').onclick=add;members.addEventListener('click',e=>{const b=e.target.closest('.remove-member');if(b)b.closest('tr').remove()});members.addEventListener('change',e=>{if(e.target.matches('.member-birthdate'))e.target.parentElement.querySelector('.member-age').value=age(e.target.value)});form.elements['household_head[birthdate]'].addEventListener('change',e=>form.elements['household_head[age]'].value=age(e.target.value));
+form.elements.barangay_id.addEventListener('change',e=>{[...form.elements.evacuation_center_id.options].forEach(o=>o.hidden=!!o.value&&o.dataset.barangay!==e.target.value);if(form.elements.evacuation_center_id.selectedOptions[0]?.hidden)form.elements.evacuation_center_id.value='' });
+const clearErrors=()=>{form.querySelectorAll('.is-invalid').forEach(x=>x.classList.remove('is-invalid'));form.querySelectorAll('.invalid-feedback').forEach(x=>x.textContent='');alertBox.classList.add('d-none')};
+function error(name,message){let input=form.elements[name];if(!input&&name.startsWith('family_members.')){const p=name.split('.');input=form.elements[`family_members[${p[1]}][${p[2]}]`]}if(!input)return false;input.classList.add('is-invalid');const feedback=input.parentElement.querySelector('.invalid-feedback')||input.closest('.col-12')?.querySelector('.invalid-feedback');if(feedback)feedback.textContent=message;return true}
+function clientValidate(){const rules={'disaster_id':'Select a disaster or incident.','barangay_id':'Select a barangay.','intake_date':'Enter the intake date.','household_head[surname]':'Enter the surname.','household_head[given_name]':'Enter the given name.','household_head[complete_address]':'Enter the complete address.','household_head[birthdate]':'Enter the birthdate.','house_ownership':'Select house ownership.','housing_condition':'Select housing condition.','interviewed_by':'Enter the interviewer.','attestation_confirmed':'Confirmation is required.'};let ok=true;Object.entries(rules).forEach(([n,m])=>{const x=form.elements[n],missing=!x||(x.type==='checkbox'?!x.checked:!x.value.trim());if(missing){error(n,m);ok=false}});return ok}
+form.addEventListener('submit',async e=>{e.preventDefault();if(saving)return;clearErrors();if(!clientValidate()){form.querySelector('.is-invalid')?.scrollIntoView({behavior:'smooth',block:'center'});return}saving=true;button.disabled=true;button.setAttribute('data-kt-indicator','on');try{const response=await fetch(`{{ route('disaster.dafac.store') }}`,{method:'POST',headers:{Accept:'application/json','X-CSRF-TOKEN':document.querySelector('meta[name=csrf-token]').content},body:new FormData(form)});let payload={};try{payload=await response.json()}catch{}if(!response.ok){let mapped=false;Object.entries(payload.errors||{}).forEach(([n,msg])=>mapped=error(n,Array.isArray(msg)?msg[0]:msg)||mapped);throw new Error(mapped?'Please correct the highlighted fields.':payload.message||({401:'Please sign in again.',403:'You are not allowed to save DAFAC intakes.',404:'A related record was not found.',409:'This intake appears to be a duplicate.',500:'The server could not save the intake.'}[response.status]||'The intake could not be saved.'))}form.dataset.saved='true';await (window.Swal?Swal.fire({text:`${payload.message} Reference: ${payload.data.dafac_reference}`,icon:'success',confirmButtonText:'Open record'}):Promise.resolve(alert(`${payload.message} ${payload.data.dafac_reference}`)));location.assign(payload.data.url)}catch(x){alertBox.textContent=x.message||'Network failure. Check your connection and try again.';alertBox.classList.remove('d-none');form.querySelector('.is-invalid')?.scrollIntoView({behavior:'smooth',block:'center'});saving=false;button.disabled=false;button.removeAttribute('data-kt-indicator')}})})();
+</script>
+@endpush

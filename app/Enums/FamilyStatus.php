@@ -4,40 +4,32 @@ namespace App\Enums;
 
 enum FamilyStatus: string
 {
-    case TCISS_VERIFIED = 'TCISS_VERIFIED';
-    case DAFAC_INTAKE_COMPLETED = 'DAFAC_INTAKE_COMPLETED';
-    case DUPLICATE_CHECKED = 'DUPLICATE_CHECKED';
-    case VALIDATED = 'VALIDATED';
-    case PAYROLL_READY = 'PAYROLL_READY';
-    case PAYOUT_SCHEDULED = 'PAYOUT_SCHEDULED';
-    case ASSISTANCE_RELEASED = 'ASSISTANCE_RELEASED';
-    case REQUIREMENTS_COMPLETED = 'REQUIREMENTS_COMPLETED';
-    case NEEDS_REVIEW = 'NEEDS_REVIEW';
-    case NEEDS_CORRECTION = 'NEEDS_CORRECTION';
-    case DUPLICATE = 'DUPLICATE';
-    case REJECTED = 'REJECTED';
+    case DRAFT='DRAFT'; case TCISS_VERIFIED='TCISS_VERIFIED'; case DAFAC_INTAKE_COMPLETED='DAFAC_INTAKE_COMPLETED';
+    case DUPLICATE_CHECK_PENDING='DUPLICATE_CHECK_PENDING'; case DUPLICATE_CLEARED='DUPLICATE_CLEARED'; case POSSIBLE_DUPLICATE='POSSIBLE_DUPLICATE'; case DUPLICATE_CONFIRMED='DUPLICATE_CONFIRMED';
+    case VALIDATION_PENDING='VALIDATION_PENDING'; case NEEDS_CORRECTION='NEEDS_CORRECTION'; case VALIDATED='VALIDATED'; case REJECTED='REJECTED';
+    case PAYROLL_READY='PAYROLL_READY'; case SUBMITTED_FOR_PAYROLL='SUBMITTED_FOR_PAYROLL'; case PAYOUT_PENDING='PAYOUT_PENDING'; case PAYOUT_SCHEDULED='PAYOUT_SCHEDULED';
+    case ASSISTANCE_RELEASED='ASSISTANCE_RELEASED'; case REQUIREMENTS_PENDING='REQUIREMENTS_PENDING'; case REQUIREMENTS_COMPLETED='REQUIREMENTS_COMPLETED';
+    // Legacy statuses remain readable during safe migration/backfill.
+    case DUPLICATE_CHECKED='DUPLICATE_CHECKED'; case NEEDS_REVIEW='NEEDS_REVIEW'; case DUPLICATE='DUPLICATE';
 
-    public function canTransitionTo(self $next): bool
-    {
-        return in_array($next, $this->allowedNextStatuses(), true);
-    }
-
-    /**
-     * @return array<int, self>
-     */
+    public function canTransitionTo(self $next): bool { return in_array($next, $this->allowedNextStatuses(), true); }
     public function allowedNextStatuses(): array
     {
-        return match ($this) {
-            self::TCISS_VERIFIED => [self::DAFAC_INTAKE_COMPLETED, self::NEEDS_REVIEW],
-            self::DAFAC_INTAKE_COMPLETED => [self::DUPLICATE_CHECKED, self::NEEDS_CORRECTION, self::DUPLICATE],
-            self::DUPLICATE_CHECKED => [self::VALIDATED, self::DUPLICATE, self::NEEDS_CORRECTION],
-            self::VALIDATED => [self::PAYROLL_READY, self::REJECTED],
-            self::PAYROLL_READY => [self::PAYOUT_SCHEDULED],
-            self::PAYOUT_SCHEDULED => [self::ASSISTANCE_RELEASED],
-            self::ASSISTANCE_RELEASED => [self::REQUIREMENTS_COMPLETED],
-            self::NEEDS_REVIEW => [self::TCISS_VERIFIED, self::REJECTED],
-            self::NEEDS_CORRECTION => [self::DAFAC_INTAKE_COMPLETED, self::VALIDATED, self::REJECTED],
-            self::DUPLICATE, self::REJECTED, self::REQUIREMENTS_COMPLETED => [],
+        return match($this) {
+            self::DRAFT, self::TCISS_VERIFIED => [self::DAFAC_INTAKE_COMPLETED],
+            self::DAFAC_INTAKE_COMPLETED => [self::DUPLICATE_CHECK_PENDING, self::NEEDS_CORRECTION],
+            self::DUPLICATE_CHECK_PENDING => [self::DUPLICATE_CLEARED,self::POSSIBLE_DUPLICATE],
+            self::POSSIBLE_DUPLICATE => [self::DUPLICATE_CLEARED,self::DUPLICATE_CONFIRMED],
+            self::DUPLICATE_CLEARED => [self::VALIDATION_PENDING],
+            self::VALIDATION_PENDING => [self::VALIDATED,self::NEEDS_CORRECTION,self::REJECTED],
+            self::NEEDS_CORRECTION => [self::DAFAC_INTAKE_COMPLETED,self::VALIDATION_PENDING],
+            self::VALIDATED => [self::PAYROLL_READY], self::PAYROLL_READY => [self::SUBMITTED_FOR_PAYROLL],
+            self::SUBMITTED_FOR_PAYROLL => [self::PAYOUT_PENDING], self::PAYOUT_PENDING => [self::PAYOUT_SCHEDULED],
+            self::PAYOUT_SCHEDULED => [self::ASSISTANCE_RELEASED], self::ASSISTANCE_RELEASED => [self::REQUIREMENTS_PENDING],
+            self::REQUIREMENTS_PENDING => [self::REQUIREMENTS_COMPLETED],
+            self::DUPLICATE_CHECKED => [self::VALIDATION_PENDING], self::NEEDS_REVIEW => [self::DUPLICATE_CHECK_PENDING,self::REJECTED],
+            self::DUPLICATE => [self::DUPLICATE_CONFIRMED],
+            self::DUPLICATE_CONFIRMED,self::REJECTED,self::REQUIREMENTS_COMPLETED => [],
         };
     }
 }

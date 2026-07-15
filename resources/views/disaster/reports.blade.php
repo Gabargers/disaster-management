@@ -1,34 +1,3 @@
-@extends('layouts.dashboard.main')
-
-@section('content')
-    @php
-        $reports = [
-            ['title' => 'DAFAC Printable Report', 'icon' => 'ki-document'],
-            ['title' => 'List of Affected Families', 'icon' => 'ki-people'],
-            ['title' => 'Validated Housing Damage Report', 'icon' => 'ki-home'],
-            ['title' => 'Payroll-ready Report', 'icon' => 'ki-dollar'],
-            ['title' => 'Payout / Distribution Report', 'icon' => 'ki-delivery'],
-            ['title' => 'Missing Requirements Report', 'icon' => 'ki-folder-down'],
-        ];
-    @endphp
-
-    <div class="row g-5 g-xl-8">
-        @foreach ($reports as $report)
-            <div class="col-md-6 col-xl-4">
-                <div class="card card-flush shadow-sm h-100">
-                    <div class="card-body d-flex flex-column">
-                        <i class="ki-duotone {{ $report['icon'] }} fs-3x text-danger mb-6">
-                            <span class="path1"></span><span class="path2"></span><span class="path3"></span>
-                        </i>
-                        <h3 class="fw-bold text-gray-900 mb-3">{{ $report['title'] }}</h3>
-                        <div class="text-muted mb-8">Generate, filter, print, or export this operational report.</div>
-                        <div class="mt-auto d-flex gap-3">
-                            <button class="btn btn-light-primary btn-sm">Preview</button>
-                            <button class="btn btn-light-success btn-sm">Export</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        @endforeach
-    </div>
-@endsection
+@extends('layouts.dashboard.main') @section('content')
+<form method="get" class="card card-body mb-6"><div class="row g-3"><div class="col-md-2"><select name="disaster_id" class="form-select"><option value="">All disasters</option>@foreach($disasters as $x)<option value="{{$x->id}}" @selected(request('disaster_id')==$x->id)>{{$x->name}}</option>@endforeach</select></div><div class="col-md-2"><select name="barangay_id" class="form-select"><option value="">All barangays</option>@foreach($barangays as $x)<option value="{{$x->id}}" @selected(request('barangay_id')==$x->id)>{{$x->name}}</option>@endforeach</select></div><div class="col-md-2"><select name="evacuation_center_id" class="form-select"><option value="">All centers</option>@foreach($centers as $x)<option value="{{$x->id}}" @selected(request('evacuation_center_id')==$x->id)>{{$x->name}}</option>@endforeach</select></div><div class="col-md-2"><input name="status" value="{{request('status')}}" class="form-control" placeholder="Workflow status"></div><div class="col-md-2"><select name="housing_condition" class="form-select"><option value="">All housing</option>@foreach(['Totally Damaged','Partially Damaged','Water Damage'] as $x)<option @selected(request('housing_condition')===$x)>{{$x}}</option>@endforeach</select></div><div class="col-md-2"><button class="btn btn-primary w-100">Run Report</button></div></div></form>
+<div class="card card-flush shadow-sm"><div class="card-header"><div class="card-title"><h3>End-to-End Workflow Report</h3></div><div class="card-toolbar"><button onclick="window.print()" class="btn btn-light-primary">Print / Export PDF</button></div></div><div class="card-body">@include('disaster.partials.family-table',['families'=>$families]){{$families->links()}}</div></div>@endsection
