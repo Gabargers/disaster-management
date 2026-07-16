@@ -58,11 +58,11 @@ class EvacuationCenterPayoutTest extends TestCase
             ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id);
     }
 
-    public function test_empty_center_returns_an_empty_assignment_page(): void
+    public function test_bagumbayan_center_returns_its_five_connected_sample_families(): void
     {
         $center = EvacuationCenter::where('name', 'Bagumbayan Multi-Purpose Hall')->firstOrFail();
         $this->actingAs($this->staff)->getJson(route('disaster.payouts.centers.families', $center))
-            ->assertOk()->assertJsonPath('meta.total', 0)->assertJsonCount(0, 'data');
+            ->assertOk()->assertJsonPath('meta.total', 5)->assertJsonCount(5, 'data');
     }
 
     public function test_authorized_user_can_create_a_center(): void
@@ -92,6 +92,7 @@ class EvacuationCenterPayoutTest extends TestCase
         $this->actingAs($this->staff)->post(route('disaster.payouts.releases.release', $release), $data)
             ->assertOk()->assertJsonPath('success', true);
         $this->assertDatabaseHas('payout_releases', ['id' => $release->id, 'status' => 'Released']);
+        $this->assertDatabaseHas('payout_releases', ['id' => $release->id, 'payout_photo_original_name' => 'beneficiary.jpg', 'payout_photo_mime_type' => 'image/jpeg']);
         $this->actingAs($this->staff)->postJson(route('disaster.payouts.releases.release', $release), $this->releaseData())
             ->assertConflict()->assertJsonPath('message', 'This payout has already been released.');
     }
@@ -101,6 +102,38 @@ class EvacuationCenterPayoutTest extends TestCase
         $release = PayoutRelease::firstOrFail();
         $user = User::factory()->create(['is_active' => true]);
         $this->actingAs($user)->postJson(route('disaster.payouts.releases.release', $release), $this->releaseData())->assertForbidden();
+    }
+
+    public function test_only_admin_or_superadmin_can_manage_payout_availability(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $center->update(['payout_availability' => 'NOT_AVAILABLE']);
+
+        $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.availability', $center), [
+            'payout_availability' => 'NOT_AVAILABLE',
+        ])->assertForbidden();
+
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $this->actingAs($admin)->postJson(route('disaster.payouts.centers.availability', $center), [
+            'payout_availability' => 'NOT_AVAILABLE',
+        ])->assertOk();
+
+        $superadmin = User::where('email', 'superadmin@gmail.com')->firstOrFail();
+        $this->actingAs($superadmin)->postJson(route('disaster.payouts.centers.availability', $center), [
+            'payout_availability' => 'NOT_AVAILABLE',
+        ])->assertOk();
+    }
+
+    public function test_availability_button_is_visible_only_to_admin_and_superadmin(): void
+    {
+        $center = EvacuationCenter::where('name', 'Bagumbayan Multi-Purpose Hall')->firstOrFail();
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()->assertDontSee('Make Payout Available');
+        foreach (['admin@gmail.com', 'superadmin@gmail.com'] as $email) {
+            $this->actingAs(User::where('email', $email)->firstOrFail())
+                ->get(route('disaster.payouts.centers.show', $center))
+                ->assertOk()->assertSee('Make Payout Available');
+        }
     }
 
     private function releaseData(): array

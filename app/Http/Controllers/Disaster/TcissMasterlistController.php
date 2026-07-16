@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Disaster;
 use App\Http\Controllers\Controller;
 use App\Models\Disaster\TcissMasterlistRecord;
 use App\Models\Disaster\UploadedDocument;
+use App\Services\Disaster\DafacIntakeIntegrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -13,10 +14,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TcissMasterlistController extends Controller
 {
+    public function __construct(private DafacIntakeIntegrationService $integration) {}
     public function index(Request $request)
     {
         $records = TcissMasterlistRecord::query()
-            ->with(['barangay', 'evacuationCenter', 'affectedFamily'])
+            ->with(['barangay', 'evacuationCenter', 'dafacRecord', 'affectedFamily.disaster', 'affectedFamily.familyMembers', 'affectedFamily.payoutReleases'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = '%'.$request->string('search')->trim().'%';
                 $query->where(function ($query) use ($search) {
@@ -27,6 +29,12 @@ class TcissMasterlistController extends Controller
             })
             ->when($request->filled('barangay_id'), fn ($query) => $query->where('barangay_id', $request->integer('barangay_id')))
             ->when($request->filled('evacuation_center_id'), fn ($query) => $query->where('evacuation_center_id', $request->integer('evacuation_center_id')))
+            ->when($request->filled('disaster_id'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('disaster_id',$request->integer('disaster_id'))))
+            ->when($request->filled('verification_status'), fn ($query) => $query->where('verification_status',$request->verification_status))
+            ->when($request->filled('workflow_status'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('status',$request->workflow_status)))
+            ->when($request->filled('payout_status'), fn ($query) => $query->whereHas('affectedFamily.payoutReleases', fn($q)=>$q->where('status',$request->payout_status)))
+            ->when($request->filled('date_from'), fn ($query) => $query->whereDate('created_at','>=',$request->date_from))
+            ->when($request->filled('date_to'), fn ($query) => $query->whereDate('created_at','<=',$request->date_to))
             ->latest()
             ->paginate(10)
             ->withQueryString();
@@ -37,6 +45,7 @@ class TcissMasterlistController extends Controller
             'records' => $records,
             'barangays' => \App\Models\Cms\Barangay::query()->where('is_active', true)->orderBy('name')->get(),
             'evacuationCenters' => \App\Models\Disaster\EvacuationCenter::query()->where('is_active', true)->orderBy('name')->get(),
+            'disasters' => \App\Models\Disaster\Disaster::query()->orderByDesc('incident_date')->get(),
         ]);
     }
 
@@ -46,6 +55,7 @@ class TcissMasterlistController extends Controller
             'barangay', 'evacuationCenter', 'verifier',
             'affectedFamily.disaster', 'affectedFamily.barangay', 'affectedFamily.evacuationCenter',
             'affectedFamily.familyMembers', 'affectedFamily.dafacRecord.interviewer', 'affectedFamily.dafacRecord.validator',
+            'affectedFamily.evacuationCenterAssignments.center.barangay', 'affectedFamily.evacuationCenterAssignments.assigner',
             'affectedFamily.validationRecords.validator', 'affectedFamily.validationRecords.documents',
             'affectedFamily.duplicateChecks.possibleDuplicateFamily', 'affectedFamily.duplicateChecks.resolver',
             'affectedFamily.assistanceRecords.releaser', 'affectedFamily.payoutReleases.payoutSchedule',
@@ -60,7 +70,7 @@ class TcissMasterlistController extends Controller
 
         return response()->json(['success' => true, 'data' => [
             'masterlist' => [
-                'id' => $record->id, 'reference_number' => $record->source_reference,
+                'id' => $record->id, 'reference_number' => $record->source_reference, 'source' => $record->source,
                 'verification_status' => $record->verification_status,
                 'verified_by' => $record->verifier?->name, 'verified_at' => $record->verified_at?->toIso8601String(),
                 'created_at' => $record->created_at?->toIso8601String(), 'updated_at' => $record->updated_at?->toIso8601String(),
@@ -79,7 +89,7 @@ class TcissMasterlistController extends Controller
                 'barangay' => $family->barangay?->name, 'evacuation_center' => $family->evacuationCenter?->name,
             ] : null,
             'dafac' => $dafac ? [
-                'reference_number' => $record->source_reference ? str_replace('TCISS-', 'DAFAC-', $record->source_reference) : 'DAFAC-'.str_pad((string) $dafac->id, 4, '0', STR_PAD_LEFT),
+                'reference_number' => $dafac->reference_number,
                 'interview_date' => $dafac->interview_date?->format('Y-m-d'),
                 'interviewed_by' => $dafac->interviewer?->name, 'validated_by' => $dafac->validator?->name,
             ] : null,
@@ -116,7 +126,54 @@ class TcissMasterlistController extends Controller
                 'status' => $payout->status, 'released_by' => $payout->releaser?->name,
                 'released_at' => $payout->released_at?->toIso8601String(),
             ])->values() ?? [],
+            'assignment' => $this->assignmentData($record),
         ]]);
+    }
+
+    public function assignEvacuationCenter(Request $request, TcissMasterlistRecord $record): JsonResponse
+    {
+        abort_unless($record->affectedFamily, 422, 'This TCISS record is not linked to an affected family.');
+        $data=$request->validate(['barangay_id'=>['required','integer','exists:barangays,id'],'evacuation_center_id'=>['required','integer','exists:evacuation_centers,id'],
+            'assignment_date'=>['required','date','before_or_equal:today'],'notes'=>['nullable','string','max:1000'],'transfer_reason'=>['nullable','string','max:1000']]);
+        $current=$record->affectedFamily->activeEvacuationCenterAssignment()->first(); $hadAssignment=(bool)$current;
+        $isTransfer=$current && ($current->evacuation_center_id!==$data['evacuation_center_id'] || $record->affectedFamily->barangay_id!==$data['barangay_id']);
+        if($isTransfer && blank($data['transfer_reason']??null)) throw \Illuminate\Validation\ValidationException::withMessages(['transfer_reason'=>'A transfer reason is required when changing evacuation centers.']);
+        $reason=$isTransfer?$data['transfer_reason']:($data['notes']??'Assigned through TCISS.');
+        $assignment=$this->integration->reassign($record->affectedFamily,$data['evacuation_center_id'],$request->user(),$reason,$data['barangay_id'],$data['assignment_date']);
+        $record->refresh()->load(['affectedFamily.barangay','affectedFamily.evacuationCenter','affectedFamily.evacuationCenterAssignments.center.barangay','affectedFamily.evacuationCenterAssignments.assigner']);
+        $noChange=$current && $current->id===$assignment->id;
+        return response()->json(['success'=>true,'message'=>$noChange?'The family is already assigned to this evacuation center.':($isTransfer?'Evacuation Center transferred successfully.':'Evacuation Center assigned successfully.'),'data'=>[
+            'assignment'=>$assignment->load(['center.barangay','assigner']), 'affected_family'=>$record->affectedFamily,
+            'assignment_view'=>$this->assignmentData($record),
+        ]]);
+    }
+
+    private function assignmentData(TcissMasterlistRecord $record): array
+    {
+        $family=$record->affectedFamily; if(!$family)return ['can_assign'=>false,'current'=>null,'centers'=>[],'history'=>[]];
+        $history=$family->evacuationCenterAssignments->sortByDesc('assigned_at')->values();
+        $current=$history->firstWhere('status','ACTIVE');
+        $centers=\App\Models\Disaster\EvacuationCenter::where('barangay_id',$family->barangay_id)->where('disaster_id',$family->disaster_id)->where('is_active',true)->where('status','ACTIVE')->with('activeAssignments.family.familyMembers')->orderBy('name')->get();
+        $lockReason=$current && $family->payoutReleases()->where('status','Released')->exists()?'Assignment cannot be changed because the payout has already been released.':null;
+        return [
+            'can_assign'=>request()->user()->can('evacuation_center.assign_family')&&!$lockReason,
+            'lock_reason'=>$lockReason,
+            'assign_url'=>route('disaster.tciss.assign-evacuation-center',$record),
+            'barangay'=>['id'=>$family->barangay_id,'name'=>$family->barangay?->name],
+            'barangays'=>\App\Models\Cms\Barangay::where('is_active',true)->orderBy('name')->get(['id','name']),
+            'disaster'=>['id'=>$family->disaster_id,'name'=>$family->disaster?->name],
+            'household_head'=>$family->household_head_full_name,
+            'current'=>$current?['id'=>$current->id,'center_id'=>$current->evacuation_center_id,'center'=>$current->center?->name,'barangay'=>$current->center?->barangay?->name,'assigned_by'=>$current->assigner?->name,'assigned_at'=>$current->assigned_at?->toIso8601String(),'status'=>$current->status]:null,
+            'centers'=>$centers->map(fn($center)=>$this->centerOption($center,request()->user())),
+            'history'=>$history->map(fn($assignment)=>['id'=>$assignment->id,'center'=>$assignment->center?->name,'barangay'=>$assignment->center?->barangay?->name,'status'=>$assignment->status,'assigned_at'=>$assignment->assigned_at?->toIso8601String(),'unassigned_at'=>$assignment->unassigned_at?->toIso8601String(),'assigned_by'=>$assignment->assigner?->name,'transfer_reason'=>$assignment->remarks]),
+        ];
+    }
+
+    private function centerOption($center,$user): array
+    {
+        $occupied=$center->activeAssignments->sum(fn($assignment)=>1+$assignment->family->familyMembers->count()); $available=max(0,$center->capacity-$occupied);
+        return ['id'=>$center->id,'name'=>$center->name,'status'=>$center->status,'capacity'=>$center->capacity,'occupied_count'=>$occupied,'available_slots'=>$available,
+            'is_full'=>$available===0,'can_override'=>$user->can('evacuation_center.capacity_override')];
     }
 
     public function document(UploadedDocument $document): StreamedResponse

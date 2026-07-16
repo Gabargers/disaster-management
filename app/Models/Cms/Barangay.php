@@ -5,6 +5,7 @@ namespace App\Models\Cms;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Barangay extends Model
 {
@@ -34,5 +35,10 @@ class Barangay extends Model
                 $barangay->uuid = (string) Str::uuid();
             }
         });
+    }
+
+    public function evacuationCenters(): HasMany
+    {
+        return $this->hasMany(\App\Models\Disaster\EvacuationCenter::class);
     }
 }

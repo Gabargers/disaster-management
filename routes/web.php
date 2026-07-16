@@ -24,6 +24,8 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::prefix('disaster')->name('disaster.')->group(function () {
         Route::get('/tciss-masterlist', [TcissMasterlistController::class, 'index'])->middleware('permission:manage tciss masterlist')->name('tciss.index');
         Route::get('/tciss-masterlist/{record}/full-details', [TcissMasterlistController::class, 'fullDetails'])->middleware('permission:manage tciss masterlist')->name('tciss.full-details');
+        Route::match(['post','put'], '/tciss-masterlist/{record}/evacuation-center-assignment', [TcissMasterlistController::class, 'assignEvacuationCenter'])
+            ->middleware(['permission:manage tciss masterlist', 'permission:evacuation_center.assign_family'])->name('tciss.assign-evacuation-center');
         Route::get('/tciss-masterlist/documents/{document}', [TcissMasterlistController::class, 'document'])
             ->middleware(['signed', 'permission:manage tciss masterlist'])->name('tciss.documents.show');
 
@@ -34,6 +36,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         });
 
         Route::get('/affected-families/{family}', [DisasterWorkflowController::class, 'show'])->name('families.show');
+        Route::get('/barangays/{barangay}/evacuation-centers', [EvacuationCenterController::class, 'centersForBarangay'])->name('barangays.evacuation-centers');
         Route::get('/duplicate-checking', [DisasterWorkflowController::class, 'duplicates'])->middleware('permission:resolve duplicate checks')->name('duplicates.index');
         Route::post('/duplicate-checking/{family}/resolve', [DisasterWorkflowController::class, 'resolveDuplicate'])->middleware('permission:resolve duplicate checks')->name('duplicates.resolve');
         Route::get('/validation', [DisasterWorkflowController::class, 'validations'])->middleware('permission:manage validation records')->name('validation.index');
@@ -51,9 +54,10 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/payouts/releases/{release}/photo', 'photo')->name('payouts.releases.photo');
             Route::get('/payouts/evacuation-centers/{center}/available-families', 'availableFamilies')->name('payouts.centers.available-families');
             Route::post('/payouts/evacuation-centers/{center}/assign-families', 'assign')->name('payouts.centers.assign');
-            Route::patch('/payouts/evacuation-centers/{center}/payout-availability', 'availability')->name('payouts.centers.availability');
             Route::post('/payouts/releases/{release}/mark-released', 'release')->name('payouts.releases.release');
         });
+        Route::match(['post', 'patch'], '/payouts/evacuation-centers/{center}/payout-availability', [EvacuationCenterController::class, 'availability'])
+            ->middleware('permission:manage payout availability')->name('payouts.centers.availability');
 
         Route::get('/post-payout-requirements', [DisasterWorkflowController::class, 'requirements'])->middleware('permission:manage post payout requirements')->name('requirements.index');
         Route::post('/post-payout-requirements/{requirement}', [DisasterWorkflowController::class, 'verifyRequirements'])->middleware('permission:manage post payout requirements')->name('requirements.verify');

@@ -24,6 +24,12 @@ class DisasterRoleSeeder extends Seeder
             'manage validation records',
             'prepare payroll list',
             'manage payout schedules',
+            'manage payout availability',
+            'manage evacuation center assignments',
+            'evacuation_center.view_assignment',
+            'evacuation_center.assign_family',
+            'evacuation_center.transfer_family',
+            'evacuation_center.capacity_override',
             'manage post payout requirements',
             'view disaster reports',
         ])->map(fn (string $name) => Permission::firstOrCreate([
@@ -40,6 +46,10 @@ class DisasterRoleSeeder extends Seeder
                 'manage tciss masterlist',
                 'manage dafac intake',
                 'resolve duplicate checks',
+                'manage evacuation center assignments',
+                'evacuation_center.view_assignment',
+                'evacuation_center.assign_family',
+                'evacuation_center.transfer_family',
                 'view disaster reports',
             ],
             'disaster-operation-officer' => [
@@ -68,6 +78,13 @@ class DisasterRoleSeeder extends Seeder
                 'name' => $roleName,
                 'guard_name' => 'web',
             ])->syncPermissions($rolePermissions);
+        }
+
+        // Superadmin is created by the auth seeder, but this disaster seeder
+        // may run later when new permissions are introduced. Keep it current
+        // without removing any permissions already granted elsewhere.
+        if ($superadmin = Role::where(['name' => 'superadmin', 'guard_name' => 'web'])->first()) {
+            $superadmin->givePermissionTo(Permission::where('guard_name', 'web')->get());
         }
 
         $this->createUser('coordinator@gmail.com', 'CSWDO Coordinator', 'cswdo-coordinator');

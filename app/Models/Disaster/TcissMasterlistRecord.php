@@ -15,12 +15,14 @@ class TcissMasterlistRecord extends Model
     protected $fillable = [
         'uuid',
         'affected_family_id',
+        'dafac_record_id',
         'barangay_id',
         'evacuation_center_id',
         'household_head_full_name',
         'birthdate',
         'address',
         'source_reference',
+        'source',
         'verification_status',
         'verified_by',
         'verified_at',
@@ -34,6 +36,11 @@ class TcissMasterlistRecord extends Model
     public function affectedFamily(): BelongsTo
     {
         return $this->belongsTo(AffectedFamily::class);
+    }
+
+    public function dafacRecord(): BelongsTo
+    {
+        return $this->belongsTo(DafacRecord::class);
     }
 
     public function barangay(): BelongsTo

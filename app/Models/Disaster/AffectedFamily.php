@@ -112,6 +112,8 @@ class AffectedFamily extends Model
     }
 
     public function tcissMasterlistRecord(): HasOne { return $this->hasOne(TcissMasterlistRecord::class); }
+    public function evacuationCenterAssignments(): HasMany { return $this->hasMany(EvacuationCenterAssignment::class); }
+    public function activeEvacuationCenterAssignment(): HasOne { return $this->hasOne(EvacuationCenterAssignment::class)->where('status', 'ACTIVE'); }
 
     public function validationRecords(): HasMany
     {

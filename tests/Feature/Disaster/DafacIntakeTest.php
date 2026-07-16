@@ -31,14 +31,17 @@ class DafacIntakeTest extends TestCase
         $this->assertDatabaseHas('affected_families', ['id' => $familyId, 'household_head_surname' => 'Villanueva', 'created_by' => $this->staff->id]);
         $this->assertSame(3, \App\Models\Disaster\FamilyMember::where('affected_family_id', $familyId)->count());
         $this->assertDatabaseHas('dafac_records', ['affected_family_id' => $familyId, 'attestation_confirmed' => true]);
+        $this->assertDatabaseHas('tciss_masterlist_records', ['affected_family_id'=>$familyId,'dafac_record_id'=>$response->json('data.dafac_id'),'source'=>'DAFAC_INTAKE']);
+        $this->assertDatabaseHas('evacuation_center_assignments', ['affected_family_id'=>$familyId,'evacuation_center_id'=>$this->validData()['evacuation_center_id'],'status'=>'ACTIVE']);
         $this->assertTrue(AuditLog::where('auditable_id', $response->json('data.id'))->where('action', 'dafac_intake_created')->exists());
     }
 
     public function test_duplicate_submission_creates_only_one_intake(): void
     {
+        $before=\App\Models\Disaster\DafacRecord::count();
         $this->actingAs($this->staff)->postJson(route('disaster.dafac.store'), $this->validData())->assertCreated();
         $this->actingAs($this->staff)->postJson(route('disaster.dafac.store'), $this->validData())->assertConflict();
-        $this->assertDatabaseCount('dafac_records', 4);
+        $this->assertSame($before+1,\App\Models\Disaster\DafacRecord::count());
     }
 
     public function test_nested_validation_errors_are_returned_and_nothing_is_saved(): void

@@ -23,12 +23,13 @@ class PayoutRelease extends Model
         'released_at',
         'released_by',
         'evacuation_center_id', 'payout_session_id', 'assistance_kind', 'quantity', 'amount', 'provider',
-        'payout_photo_path', 'photo_caption', 'photo_taken_at', 'photo_uploaded_by', 'idempotency_key',
+        'payout_photo_path', 'payout_photo_original_name', 'payout_photo_mime_type', 'payout_photo_size',
+        'payout_photo_uploaded_at', 'photo_caption', 'photo_taken_at', 'photo_uploaded_by', 'idempotency_key',
     ];
 
     protected function casts(): array
     {
-        return ['photo_override' => 'boolean', 'released_at' => 'datetime', 'photo_taken_at' => 'datetime', 'amount' => 'decimal:2', 'quantity' => 'decimal:2'];
+        return ['photo_override' => 'boolean', 'released_at' => 'datetime', 'photo_taken_at' => 'datetime', 'payout_photo_uploaded_at' => 'datetime', 'amount' => 'decimal:2', 'quantity' => 'decimal:2'];
     }
 
     public function canBeReleased(): bool
