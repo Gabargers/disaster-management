@@ -4,24 +4,24 @@
 @php
     $mainCards = [
         ['TOTAL', 'Affected Families', 'All registered households', 'ki-people', 'primary', route('disaster.reports.index')],
-        ['DUPLICATE_CHECK_PENDING', 'Duplicate Review', 'Waiting for identity review', 'ki-copy', 'warning', route('disaster.duplicates.index')],
-        ['VALIDATION_PENDING', 'For Validation', 'Ready for field validation', 'ki-shield-tick', 'info', route('disaster.validation.index')],
-        ['PAYROLL_READY', 'Payroll Ready', 'Ready for payroll submission', 'ki-dollar', 'success', route('disaster.payroll.index')],
+        ['VALIDATION_PENDING', 'For Validation', 'DAFAC households awaiting validation', 'ki-shield-tick', 'warning', route('disaster.payouts.index')],
+        ['PAYOUT_SCHEDULED', 'Scheduled Payouts', 'Households scheduled for release', 'ki-calendar-8', 'info', route('disaster.payouts.index')],
+        ['RELEASED_PAYOUTS', 'Released Payouts', 'Households that received assistance', 'ki-dollar', 'success', route('disaster.payroll.index')],
     ];
     $attentionCards = [
-        ['POSSIBLE_DUPLICATE', 'Possible duplicates', 'danger', route('disaster.duplicates.index')],
-        ['NEEDS_CORRECTION', 'Needs correction', 'warning', route('disaster.validation.index')],
-        ['REJECTED', 'Rejected records', 'danger', route('disaster.reports.index')],
-        ['REQUIREMENTS_PENDING', 'Missing requirements', 'warning', route('disaster.requirements.index')],
+        ['VALIDATION_PENDING', 'For validation', 'warning', route('disaster.payouts.index')],
+        ['NEEDS_CORRECTION', 'Needs correction', 'danger', route('disaster.payouts.index')],
+        ['PAYOUT_PENDING', 'Pending payout schedule', 'info', route('disaster.payouts.index')],
+        ['REQUIREMENTS_PENDING', 'Missing requirements', 'warning', route('disaster.payroll.index')],
     ];
     $stages = [
-        ['DAFAC', 'DAFAC_INTAKE_COMPLETED', 'ki-notepad-edit', route('disaster.dafac.index')],
-        ['Duplicate Check', 'DUPLICATE_CHECK_PENDING', 'ki-copy', route('disaster.duplicates.index')],
-        ['Validation', 'VALIDATION_PENDING', 'ki-shield-tick', route('disaster.validation.index')],
-        ['Payroll', 'SUBMITTED_FOR_PAYROLL', 'ki-dollar', route('disaster.payroll.index')],
-        ['Payout', 'PAYOUT_SCHEDULED', 'ki-calendar-8', route('disaster.payouts.index')],
-        ['Released', 'ASSISTANCE_RELEASED', 'ki-check-circle', route('disaster.payouts.index')],
-        ['Completed', 'REQUIREMENTS_COMPLETED', 'ki-verify', route('disaster.requirements.index')],
+        ['Families', 'TOTAL', 'ki-people', route('disaster.reports.index')],
+        ['For Validation', 'VALIDATION_PENDING', 'ki-shield-tick', route('disaster.payouts.index')],
+        ['Validated', 'VALIDATED', 'ki-check-circle', route('disaster.payouts.index')],
+        ['Payout Pending', 'PAYOUT_PENDING', 'ki-time', route('disaster.payouts.index')],
+        ['Scheduled', 'PAYOUT_SCHEDULED', 'ki-calendar-8', route('disaster.payouts.index')],
+        ['Released', 'RELEASED_PAYOUTS', 'ki-dollar', route('disaster.payroll.index')],
+        ['Requirements', 'REQUIREMENTS_PENDING', 'ki-folder-down', route('disaster.payroll.index')],
     ];
 @endphp
 
@@ -32,10 +32,10 @@
             <h1 class="text-white fw-bold mb-2">Good day, {{ auth()->user()->first_name ?: auth()->user()->name }}</h1>
             <div class="text-white text-opacity-75 fs-6">Monitor households and move urgent cases through the assistance workflow.</div>
         </div>
-        @can('manage dafac intake')
-            <a href="{{ route('disaster.dafac.index') }}" class="btn btn-light btn-lg fw-bold text-primary flex-shrink-0">
-                <i class="ki-duotone ki-plus fs-2 text-primary"><span class="path1"></span><span class="path2"></span></i>
-                New DAFAC Intake
+        @can('manage payout schedules')
+            <a href="{{ route('disaster.payouts.index') }}" class="btn btn-light btn-lg fw-bold text-primary flex-shrink-0">
+                <i class="ki-duotone ki-geolocation fs-2 text-primary"><span class="path1"></span><span class="path2"></span></i>
+                Open Evacuation Centers
             </a>
         @endcan
     </div>
@@ -90,7 +90,7 @@
             <div class="card-body pt-2">
                 <div class="workflow-track">
                     @foreach($stages as [$label, $key, $icon, $url])
-                        <a href="{{ $url }}?status={{ $key }}" class="workflow-stage text-center">
+                        <a href="{{ $url }}{{ in_array($key, ['TOTAL','RELEASED_PAYOUTS'], true) ? '' : '?status='.$key }}" class="workflow-stage text-center">
                             <div class="workflow-icon mx-auto"><i class="ki-duotone {{ $icon }} fs-2x"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
                             <div class="fs-2 fw-bold text-gray-900 mt-3">{{ number_format($metrics[$key] ?? 0) }}</div>
                             <div class="fs-7 fw-semibold text-muted">{{ $label }}</div>

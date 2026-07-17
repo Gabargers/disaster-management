@@ -42,6 +42,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/validation', [DisasterWorkflowController::class, 'validations'])->middleware('permission:manage validation records')->name('validation.index');
         Route::post('/validation/{family}', [DisasterWorkflowController::class, 'validateFamily'])->middleware('permission:manage validation records')->name('validation.store');
         Route::get('/payroll-preparation', [DisasterWorkflowController::class, 'payroll'])->middleware('permission:prepare payroll list')->name('payroll.index');
+        Route::get('/payroll-preparation/releases/{release}/photo', [DisasterWorkflowController::class, 'payrollPhoto'])->middleware('permission:prepare payroll list')->name('payroll.photo');
+        Route::post('/payroll-preparation/families/{family}/requirements', [DisasterWorkflowController::class, 'payrollRequirements'])->middleware('permission:prepare payroll list')->name('payroll.requirements');
         Route::post('/payroll-preparation', [DisasterWorkflowController::class, 'payrollAction'])->middleware('permission:prepare payroll list')->name('payroll.action');
 
         Route::controller(EvacuationCenterController::class)->middleware('permission:manage payout schedules')->group(function () {
@@ -51,6 +53,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/payouts/evacuation-centers/{center}', 'show')->name('payouts.centers.show');
             Route::get('/payouts/evacuation-centers/{center}/families', 'families')->name('payouts.centers.families');
             Route::get('/payouts/evacuation-centers/{center}/families/{family}/payout-details', 'payoutDetails')->name('payouts.centers.families.payout-details');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/housing-condition', 'updateHousingCondition')->name('payouts.centers.families.housing-condition');
             Route::get('/payouts/releases/{release}/photo', 'photo')->name('payouts.releases.photo');
             Route::get('/payouts/evacuation-centers/{center}/available-families', 'availableFamilies')->name('payouts.centers.available-families');
             Route::post('/payouts/evacuation-centers/{center}/assign-families', 'assign')->name('payouts.centers.assign');

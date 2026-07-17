@@ -124,7 +124,7 @@ class EvacuationCenterPayoutTest extends TestCase
         ])->assertOk();
     }
 
-    public function test_availability_button_is_visible_only_to_admin_and_superadmin(): void
+    public function test_availability_button_is_removed_for_all_roles(): void
     {
         $center = EvacuationCenter::where('name', 'Bagumbayan Multi-Purpose Hall')->firstOrFail();
         $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
@@ -132,7 +132,7 @@ class EvacuationCenterPayoutTest extends TestCase
         foreach (['admin@gmail.com', 'superadmin@gmail.com'] as $email) {
             $this->actingAs(User::where('email', $email)->firstOrFail())
                 ->get(route('disaster.payouts.centers.show', $center))
-                ->assertOk()->assertSee('Make Payout Available');
+                ->assertOk()->assertDontSee('Make Payout Available');
         }
     }
 

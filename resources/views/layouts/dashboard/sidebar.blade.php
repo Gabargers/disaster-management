@@ -37,12 +37,8 @@
                     $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
                     $disasterModules = [
                         ['route' => 'disaster.tciss.index', 'label' => 'TCISS', 'icon' => 'ki-magnifier'],
-                        ['route' => 'disaster.dafac.index', 'label' => 'DAFAC', 'icon' => 'ki-notepad-edit'],
-                        ['route' => 'disaster.duplicates.index', 'label' => 'Duplicates', 'icon' => 'ki-copy'],
-                        ['route' => 'disaster.validation.index', 'label' => 'Validation', 'icon' => 'ki-shield-tick'],
                         ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar'],
                         ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation'],
-                        ['route' => 'disaster.requirements.index', 'label' => 'Requirements', 'icon' => 'ki-folder-down'],
                         ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document'],
                     ];
                 @endphp
