@@ -34,11 +34,50 @@ class TcissFullDetailsTest extends TestCase
             ->assertJsonCount(3, 'data.family_members');
     }
 
+    public function test_superadmin_always_receives_editable_assignment_access_without_cached_authorization(): void
+    {
+        $record = TcissMasterlistRecord::whereHas('affectedFamily')->firstOrFail();
+        $superadmin = User::where('email', 'superadmin@gmail.com')->firstOrFail();
+
+        $response = $this->actingAs($superadmin)
+            ->getJson(route('disaster.tciss.full-details', $record))
+            ->assertOk()
+            ->assertJsonPath('data.assignment.can_assign', true);
+
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $response->assertHeader('Vary', 'Cookie');
+    }
+
     public function test_record_without_family_members_returns_an_empty_array(): void
     {
         $record = TcissMasterlistRecord::where('source_reference', 'TCISS-2026-0003')->firstOrFail();
         $this->actingAs($this->user)->getJson(route('disaster.tciss.full-details', $record))
             ->assertOk()->assertJsonCount(0, 'data.family_members');
+    }
+
+    public function test_tciss_table_shows_persistent_validation_status_instead_of_raw_workflow_status(): void
+    {
+        $this->actingAs($this->user)->get(route('disaster.tciss.index'))
+            ->assertOk()
+            ->assertSee('Verification / Validation')
+            ->assertSee('Validated');
+    }
+
+    public function test_tciss_records_can_be_filtered_by_validation_status(): void
+    {
+        $validated = TcissMasterlistRecord::whereHas(
+            'affectedFamily.validationRecords',
+            fn ($query) => $query->where('status', 'Validated')
+        )->firstOrFail();
+
+        $response = $this->actingAs($this->user)->get(route('disaster.tciss.index', [
+            'validation_status' => 'Validated',
+        ]))->assertOk();
+
+        $this->assertTrue($response->viewData('records')->contains('id', $validated->id));
+        $this->assertTrue($response->viewData('records')->every(
+            fn ($record) => $record->affectedFamily->validationRecords->contains('status', 'Validated')
+        ));
     }
 
     public function test_attachment_uses_a_temporary_secure_url(): void

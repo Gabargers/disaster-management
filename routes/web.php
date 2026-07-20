@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\AccountManagementController;
 use App\Http\Controllers\Cms\BarangayController;
 use App\Http\Controllers\Disaster\TcissMasterlistController;
 use App\Http\Controllers\Disaster\EvacuationCenterController;
@@ -20,6 +21,18 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->name('dashboard');
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    Route::controller(AccountManagementController::class)
+        ->prefix('accounts')
+        ->name('accounts.')
+        ->middleware('role:admin|superadmin')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/data', 'data')->name('data');
+            Route::post('/', 'store')->name('store');
+            Route::put('/{account}', 'update')->name('update');
+            Route::delete('/{account}', 'destroy')->name('destroy');
+        });
 
     Route::prefix('disaster')->name('disaster.')->group(function () {
         Route::get('/tciss-masterlist', [TcissMasterlistController::class, 'index'])->middleware('permission:manage tciss masterlist')->name('tciss.index');

@@ -18,7 +18,7 @@ class TcissMasterlistController extends Controller
     public function index(Request $request)
     {
         $records = TcissMasterlistRecord::query()
-            ->with(['barangay', 'evacuationCenter', 'dafacRecord', 'affectedFamily.disaster', 'affectedFamily.familyMembers', 'affectedFamily.payoutReleases'])
+            ->with(['barangay', 'evacuationCenter', 'dafacRecord', 'affectedFamily.disaster', 'affectedFamily.familyMembers', 'affectedFamily.validationRecords', 'affectedFamily.payoutReleases'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = '%'.$request->string('search')->trim().'%';
                 $query->where(function ($query) use ($search) {
@@ -32,6 +32,20 @@ class TcissMasterlistController extends Controller
             ->when($request->filled('disaster_id'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('disaster_id',$request->integer('disaster_id'))))
             ->when($request->filled('verification_status'), fn ($query) => $query->where('verification_status',$request->verification_status))
             ->when($request->filled('workflow_status'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('status',$request->workflow_status)))
+            ->when($request->filled('validation_status'), function ($query) use ($request) {
+                $status = $request->string('validation_status')->toString();
+
+                $query->whereHas('affectedFamily', function ($query) use ($status) {
+                    match ($status) {
+                        'Validated' => $query->whereHas('validationRecords', fn ($validation) => $validation->where('status', 'Validated')),
+                        'Needs Correction' => $query->where('status', \App\Enums\FamilyStatus::NEEDS_CORRECTION),
+                        'Rejected' => $query->where('status', \App\Enums\FamilyStatus::REJECTED),
+                        'For Validation' => $query->whereDoesntHave('validationRecords', fn ($validation) => $validation->where('status', 'Validated'))
+                            ->whereNotIn('status', [\App\Enums\FamilyStatus::NEEDS_CORRECTION, \App\Enums\FamilyStatus::REJECTED]),
+                        default => null,
+                    };
+                });
+            })
             ->when($request->filled('payout_status'), fn ($query) => $query->whereHas('affectedFamily.payoutReleases', fn($q)=>$q->where('status',$request->payout_status)))
             ->when($request->filled('date_from'), fn ($query) => $query->whereDate('created_at','>=',$request->date_from))
             ->when($request->filled('date_to'), fn ($query) => $query->whereDate('created_at','<=',$request->date_to))
@@ -127,7 +141,9 @@ class TcissMasterlistController extends Controller
                 'released_at' => $payout->released_at?->toIso8601String(),
             ])->values() ?? [],
             'assignment' => $this->assignmentData($record),
-        ]]);
+        ]])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Vary', 'Cookie');
     }
 
     public function assignEvacuationCenter(Request $request, TcissMasterlistRecord $record): JsonResponse

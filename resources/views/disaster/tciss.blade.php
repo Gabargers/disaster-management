@@ -13,7 +13,7 @@
                 <div class="col-md-6 col-xl-2"><label class="form-label">Evacuation Center</label><select name="evacuation_center_id" class="form-select form-select-solid"><option value="">All centers</option>@foreach ($evacuationCenters as $center)<option value="{{ $center->id }}" @selected(request('evacuation_center_id') == $center->id)>{{ $center->name }}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Disaster</label><select name="disaster_id" class="form-select form-select-solid"><option value="">All disasters</option>@foreach($disasters as $disaster)<option value="{{$disaster->id}}" @selected(request('disaster_id')==$disaster->id)>{{$disaster->name}}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Verification</label><select name="verification_status" class="form-select form-select-solid"><option value="">All verification</option>@foreach(['Needs Review','Verified'] as $status)<option @selected(request('verification_status')===$status)>{{$status}}</option>@endforeach</select></div>
-                <div class="col-md-6 col-xl-3"><label class="form-label">Workflow Status</label><select name="workflow_status" class="form-select form-select-solid"><option value="">All workflow statuses</option>@foreach(\App\Enums\FamilyStatus::cases() as $status)<option value="{{$status->value}}" @selected(request('workflow_status')===$status->value)>{{str_replace('_',' ',$status->value)}}</option>@endforeach</select></div>
+                <div class="col-md-6 col-xl-3"><label class="form-label">Validation Status</label><select name="validation_status" class="form-select form-select-solid"><option value="">All validation statuses</option>@foreach(['For Validation','Validated','Needs Correction','Rejected'] as $status)<option value="{{$status}}" @selected(request('validation_status')===$status)>{{$status}}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Payout Status</label><select name="payout_status" class="form-select form-select-solid"><option value="">All payouts</option>@foreach(['Pending','Scheduled','Released','Cancelled'] as $status)<option @selected(request('payout_status')===$status)>{{$status}}</option>@endforeach</select></div>
                 <div class="col-6 col-xl-2"><label class="form-label">Created From</label><input type="date" name="date_from" value="{{request('date_from')}}" class="form-control form-control-solid"></div><div class="col-6 col-xl-2"><label class="form-label">Created To</label><input type="date" name="date_to" value="{{request('date_to')}}" class="form-control form-control-solid"></div>
                 <div class="col-xl-3"><button class="btn btn-primary w-100"><i class="ki-duotone ki-filter fs-3"><span class="path1"></span><span class="path2"></span></i>Apply Filters</button></div>
@@ -21,7 +21,7 @@
 
             <div class="table-responsive tciss-table-wrap">
                 <table class="table align-middle table-row-dashed fs-6 gy-5">
-                    <thead><tr class="text-start text-gray-600 fw-bold fs-7 text-uppercase"><th>TCISS / DAFAC</th><th>Household Head</th><th>Barangay / Center</th><th>Members</th><th>Disaster</th><th>Verification / Workflow</th><th>Payout</th><th>Created</th><th class="text-end">Action</th></tr></thead>
+                    <thead><tr class="text-start text-gray-600 fw-bold fs-7 text-uppercase"><th>TCISS / DAFAC</th><th>Household Head</th><th>Barangay / Center</th><th>Members</th><th>Disaster</th><th>Verification / Validation</th><th>Payout</th><th>Created</th><th class="text-end">Action</th></tr></thead>
                     <tbody class="fw-semibold text-gray-800">
                         @forelse ($records as $record)
                             <tr>
@@ -30,7 +30,22 @@
                                 <td>{{ $record->barangay?->name ?: '—' }}<div class="text-muted fs-7 tciss-location js-center-name">{{ $record->evacuationCenter?->name ?: 'Unassigned' }}</div></td>
                                 <td>{{$record->affectedFamily?->familyMembers->count()??0}} additional<div class="text-muted fs-7">{{($record->affectedFamily?->familyMembers->count()??0)+1}} total</div></td>
                                 <td>{{$record->affectedFamily?->disaster?->type?:'—'}}</td>
-                                <td><span class="badge badge-light-{{ $record->verification_status === 'Verified' ? 'success' : 'warning' }}">{{ $record->verification_status }}</span><div class="text-muted fs-7 mt-1">{{str_replace('_',' ',$record->affectedFamily?->status?->value??'—')}}</div></td>
+                                @php
+                                    $familyStatus = $record->affectedFamily?->status?->value;
+                                    $latestValidation = $record->affectedFamily?->validationRecords->sortByDesc('validated_at')->first();
+                                    $validationStatus = $latestValidation?->status ?? match ($familyStatus) {
+                                        'NEEDS_CORRECTION' => 'Needs Correction',
+                                        'REJECTED' => 'Rejected',
+                                        default => 'For Validation',
+                                    };
+                                    $validationTone = match ($validationStatus) {
+                                        'Validated' => 'success',
+                                        'Rejected' => 'danger',
+                                        'Needs Correction' => 'warning',
+                                        default => 'secondary',
+                                    };
+                                @endphp
+                                <td><span class="badge badge-light-{{ $record->verification_status === 'Verified' ? 'success' : 'warning' }}">{{ $record->verification_status }}</span><div class="mt-2"><span class="badge badge-light-{{ $validationTone }}">{{ $validationStatus }}</span></div></td>
                                 @php($latestPayout=$record->affectedFamily?->payoutReleases->sortByDesc('id')->first())<td><span class="badge badge-light-{{$latestPayout?->status==='Released'?'success':($latestPayout?'warning':'secondary')}}">{{$latestPayout?->status??'Not Ready'}}</span></td><td class="text-nowrap">{{$record->created_at?->format('M d, Y')}}</td>
                                 <td class="text-end"><button type="button" class="btn btn-sm btn-light-primary js-open-tciss" data-details-url="{{ route('disaster.tciss.full-details', $record) }}">Open</button></td>
                             </tr>
@@ -112,7 +127,7 @@
         modal.show();
         $('#details-loading').removeClass('d-none'); $('#details-error, #details-content').addClass('d-none');
         try {
-            const response = await fetch(button.dataset.detailsUrl, {headers:{Accept:'application/json', 'X-Requested-With':'XMLHttpRequest'}});
+            const response = await fetch(button.dataset.detailsUrl, {cache:'no-store', headers:{Accept:'application/json', 'X-Requested-With':'XMLHttpRequest'}});
             if (!response.ok) throw new Error(response.status === 403 ? 'You are not authorized to view this record.' : response.status === 404 ? 'The selected record could not be found.' : 'The record could not be loaded. Please try again.');
             const {data:d} = await response.json(), f = d.affected_family, df = d.dafac, v = d.validation;
             $('#details-reference').text(`${empty(d.masterlist.reference_number)} • ${empty(df?.reference_number)}`);

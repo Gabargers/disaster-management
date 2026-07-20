@@ -114,13 +114,6 @@
     </div>
 </div>
 
-<div class="card card-flush shadow-sm">
-    <div class="card-header align-items-center">
-        <div class="card-title"><div><h3 class="fw-bold mb-1">Recent Household Records</h3><div class="text-muted fs-7">Latest activity across all assistance stages</div></div></div>
-        <div class="card-toolbar"><a href="{{ route('disaster.reports.index') }}" class="btn btn-sm btn-light-primary">View All Records <i class="ki-duotone ki-arrow-right fs-4"><span class="path1"></span><span class="path2"></span></i></a></div>
-    </div>
-    <div class="card-body pt-0">@include('disaster.partials.family-table', ['families' => $families])</div>
-</div>
 @endsection
 
 @push('styles')
@@ -133,4 +126,17 @@
     @media(max-width:991.98px){.workflow-track{grid-template-columns:repeat(4,1fr);row-gap:28px}.workflow-track:before{display:none}}
     @media(max-width:575.98px){.workflow-track{grid-template-columns:repeat(2,1fr)}}
 </style>
+@endpush
+
+@push('scripts')
+<script>
+    // Browser back/forward cache can restore the dashboard with the count from
+    // before a payout was released. Reload only when the page was restored
+    // from that cache so the operational metrics always reflect the database.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+</script>
 @endpush

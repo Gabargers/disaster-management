@@ -21,6 +21,7 @@
                 @php
                     $role = Auth::user()->getRoleNames()->first();
                     $isSuperAdmin = auth()->user()->hasRole('superadmin');
+                    $canManageAccounts = auth()->user()->hasAnyRole(['admin', 'superadmin']);
 
                     $canBarangay =
                         $isSuperAdmin ||
@@ -36,11 +37,13 @@
                     $canCms = $canBarangay && $barangayRoute;
                     $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
                     $disasterModules = [
-                        ['route' => 'disaster.tciss.index', 'label' => 'TCISS', 'icon' => 'ki-magnifier'],
-                        ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar'],
-                        ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation'],
-                        ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document'],
+                        ['route' => 'disaster.tciss.index', 'label' => 'TCISS', 'icon' => 'ki-magnifier', 'permission' => 'manage tciss masterlist'],
+                        ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar', 'permission' => 'prepare payroll list'],
+                        ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation', 'permission' => 'manage payout schedules'],
+                        ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document', 'permission' => 'view disaster reports'],
                     ];
+                    $visibleDisasterModules = collect($disasterModules)
+                        ->filter(fn ($module) => auth()->user()->can($module['permission']));
                 @endphp
 
                 <div class="menu-item py-2">
@@ -61,9 +64,10 @@
                     </a>
                 </div>
 
-                @foreach ($disasterModules as $module)
+                @foreach ($visibleDisasterModules as $module)
                     <div class="menu-item py-2">
                         <a href="{{ route($module['route']) }}"
+                            data-sidebar-route="{{ $module['route'] }}"
                             class="menu-link menu-center flex-column {{ request()->routeIs($module['route']) ? 'active' : '' }}"
                             style="gap: 2px;">
                             <span class="menu-icon me-0">
@@ -79,6 +83,23 @@
                         </a>
                     </div>
                 @endforeach
+
+                @if ($canManageAccounts)
+                    <div class="menu-item py-2">
+                        <a href="{{ route('accounts.index') }}"
+                            data-sidebar-route="accounts.index"
+                            class="menu-link menu-center flex-column {{ request()->routeIs('accounts.*') ? 'active' : '' }}"
+                            style="gap: 2px;">
+                            <span class="menu-icon me-0">
+                                <i class="ki-duotone ki-people fs-2x">
+                                    <span class="path1"></span><span class="path2"></span><span class="path3"></span>
+                                    <span class="path4"></span><span class="path5"></span>
+                                </i>
+                            </span>
+                            <span class="menu-title fs-7 text-center">Accounts</span>
+                        </a>
+                    </div>
+                @endif
 
                 @if ($canCms)
                     <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"

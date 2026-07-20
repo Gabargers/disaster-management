@@ -97,6 +97,27 @@ class EvacuationCenterPayoutTest extends TestCase
             ->assertConflict()->assertJsonPath('message', 'This payout has already been released.');
     }
 
+    public function test_new_release_is_immediately_reflected_in_dashboard_and_released_payout_list(): void
+    {
+        Storage::fake('local');
+        $release = PayoutRelease::where('status', 'Scheduled')->orderBy('id')->firstOrFail();
+        $before = PayoutRelease::where('status', 'Released')->count();
+
+        $this->actingAs($this->staff)
+            ->post(route('disaster.payouts.releases.release', $release), $this->releaseData() + [
+                'photo' => UploadedFile::fake()->image('dashboard-proof.jpg', 640, 480),
+            ])
+            ->assertOk();
+
+        $dashboard = $this->actingAs($this->staff)->get(route('dashboard'))->assertOk();
+        $this->assertSame($before + 1, $dashboard->viewData('metrics')['RELEASED_PAYOUTS']);
+        $this->assertStringContainsString('no-store', (string) $dashboard->headers->get('Cache-Control'));
+
+        $this->actingAs($this->staff)->get(route('disaster.payroll.index'))
+            ->assertOk()
+            ->assertViewHas('families', fn ($families) => $families->contains('id', $release->affected_family_id));
+    }
+
     public function test_unauthorized_user_cannot_release(): void
     {
         $release = PayoutRelease::firstOrFail();
