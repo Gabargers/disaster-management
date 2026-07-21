@@ -13,7 +13,6 @@
                 <div class="col-md-6 col-xl-2"><label class="form-label">Evacuation Center</label><select name="evacuation_center_id" class="form-select form-select-solid"><option value="">All centers</option>@foreach ($evacuationCenters as $center)<option value="{{ $center->id }}" @selected(request('evacuation_center_id') == $center->id)>{{ $center->name }}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Disaster</label><select name="disaster_id" class="form-select form-select-solid"><option value="">All disasters</option>@foreach($disasters as $disaster)<option value="{{$disaster->id}}" @selected(request('disaster_id')==$disaster->id)>{{$disaster->name}}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Verification</label><select name="verification_status" class="form-select form-select-solid"><option value="">All verification</option>@foreach(['Needs Review','Verified'] as $status)<option @selected(request('verification_status')===$status)>{{$status}}</option>@endforeach</select></div>
-                <div class="col-md-6 col-xl-3"><label class="form-label">Validation Status</label><select name="validation_status" class="form-select form-select-solid"><option value="">All validation statuses</option>@foreach(['For Validation','Validated','Needs Correction','Rejected'] as $status)<option value="{{$status}}" @selected(request('validation_status')===$status)>{{$status}}</option>@endforeach</select></div>
                 <div class="col-md-6 col-xl-2"><label class="form-label">Payout Status</label><select name="payout_status" class="form-select form-select-solid"><option value="">All payouts</option>@foreach(['Pending','Scheduled','Released','Cancelled'] as $status)<option @selected(request('payout_status')===$status)>{{$status}}</option>@endforeach</select></div>
                 <div class="col-6 col-xl-2"><label class="form-label">Created From</label><input type="date" name="date_from" value="{{request('date_from')}}" class="form-control form-control-solid"></div><div class="col-6 col-xl-2"><label class="form-label">Created To</label><input type="date" name="date_to" value="{{request('date_to')}}" class="form-control form-control-solid"></div>
                 <div class="col-xl-3"><button class="btn btn-primary w-100"><i class="ki-duotone ki-filter fs-3"><span class="path1"></span><span class="path2"></span></i>Apply Filters</button></div>
@@ -21,33 +20,26 @@
 
             <div class="table-responsive tciss-table-wrap">
                 <table class="table align-middle table-row-dashed fs-6 gy-5">
-                    <thead><tr class="text-start text-gray-600 fw-bold fs-7 text-uppercase"><th>TCISS / DAFAC</th><th>Household Head</th><th>Barangay / Center</th><th>Members</th><th>Disaster</th><th>Verification / Validation</th><th>Payout</th><th>Created</th><th class="text-end">Action</th></tr></thead>
+                    <thead><tr class="text-start text-gray-600 fw-bold fs-7 text-uppercase"><th>TCISS / DAFAC</th><th>Household Head</th><th>Barangay</th><th>Members</th><th>Disaster</th><th>TCISS Status</th><th>Evacuation Center</th><th>Created</th><th class="text-end">Action</th></tr></thead>
                     <tbody class="fw-semibold text-gray-800">
                         @forelse ($records as $record)
                             <tr>
                                 <td class="text-nowrap"><strong>{{ $record->source_reference ?: '—' }}</strong><div class="text-muted fs-7">{{ $record->dafacRecord?->reference_number ?: '—' }}</div><div class="text-muted fs-8">{{str_replace('_',' ',$record->source)}}</div></td>
                                 <td><div class="d-flex flex-column tciss-household"><span class="fw-bold text-gray-900">{{ $record->household_head_full_name }}</span><span class="text-muted fs-7 text-truncate">{{ $record->address }}</span></div></td>
-                                <td>{{ $record->barangay?->name ?: '—' }}<div class="text-muted fs-7 tciss-location js-center-name">{{ $record->evacuationCenter?->name ?: 'Unassigned' }}</div></td>
+                                <td>{{ $record->barangay?->name ?: '—' }}</td>
                                 <td>{{$record->affectedFamily?->familyMembers->count()??0}} additional<div class="text-muted fs-7">{{($record->affectedFamily?->familyMembers->count()??0)+1}} total</div></td>
                                 <td>{{$record->affectedFamily?->disaster?->type?:'—'}}</td>
-                                @php
-                                    $familyStatus = $record->affectedFamily?->status?->value;
-                                    $latestValidation = $record->affectedFamily?->validationRecords->sortByDesc('validated_at')->first();
-                                    $validationStatus = $latestValidation?->status ?? match ($familyStatus) {
-                                        'NEEDS_CORRECTION' => 'Needs Correction',
-                                        'REJECTED' => 'Rejected',
-                                        default => 'For Validation',
-                                    };
-                                    $validationTone = match ($validationStatus) {
-                                        'Validated' => 'success',
-                                        'Rejected' => 'danger',
-                                        'Needs Correction' => 'warning',
-                                        default => 'secondary',
-                                    };
-                                @endphp
-                                <td><span class="badge badge-light-{{ $record->verification_status === 'Verified' ? 'success' : 'warning' }}">{{ $record->verification_status }}</span><div class="mt-2"><span class="badge badge-light-{{ $validationTone }}">{{ $validationStatus }}</span></div></td>
-                                @php($latestPayout=$record->affectedFamily?->payoutReleases->sortByDesc('id')->first())<td><span class="badge badge-light-{{$latestPayout?->status==='Released'?'success':($latestPayout?'warning':'secondary')}}">{{$latestPayout?->status??'Not Ready'}}</span></td><td class="text-nowrap">{{$record->created_at?->format('M d, Y')}}</td>
-                                <td class="text-end"><button type="button" class="btn btn-sm btn-light-primary js-open-tciss" data-details-url="{{ route('disaster.tciss.full-details', $record) }}">Open</button></td>
+                                <td><span class="badge badge-light-{{ $record->verification_status === 'Verified' ? 'success' : 'warning' }}">{{ $record->verification_status }}</span></td>
+                                <td><span class="js-center-name {{ $record->evacuationCenter ? 'fw-semibold text-gray-900' : 'badge badge-light-secondary' }}">{{ $record->evacuationCenter?->name ?: 'Unassigned' }}</span></td>
+                                <td class="text-nowrap">{{$record->created_at?->format('M d, Y')}}</td>
+                                <td class="text-end text-nowrap">
+                                    @if($record->verification_status !== 'Verified')
+                                        <button type="button" class="btn btn-sm btn-success js-verify-tciss" data-verify-url="{{ route('disaster.tciss.verify', $record) }}" data-household="{{ $record->household_head_full_name }}">Verify</button>
+                                    @else
+                                        <button type="button" class="btn btn-sm btn-primary js-open-tciss" data-open-assignment="1" data-details-url="{{ route('disaster.tciss.full-details', $record) }}">{{ $record->evacuationCenter ? 'View Assignment' : 'Assign Center' }}</button>
+                                    @endif
+                                    <button type="button" class="btn btn-sm btn-light-primary js-open-tciss" data-details-url="{{ route('disaster.tciss.full-details', $record) }}">Details</button>
+                                </td>
                             </tr>
                         @empty
                             <tr><td colspan="9"><div class="text-center py-12"><i class="ki-duotone ki-people fs-3x text-muted"><span class="path1"></span><span class="path2"></span></i><h4 class="mt-4 mb-1">No matching masterlist records</h4><div class="text-muted">Adjust or clear the filters and try again.</div></div></td></tr>
@@ -73,18 +65,12 @@
                     <ul class="nav nav-tabs nav-line-tabs nav-line-tabs-2x mb-7 fs-6 flex-nowrap overflow-auto tciss-tabs">
                         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#details-personal">Personal Details</a></li>
                         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#details-family">Family Composition <span id="member-count" class="badge badge-light ms-1">0</span></a></li>
-                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#details-validation">Validation</a></li>
-                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#details-assignment">Evacuation Center</a></li>
-                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#details-attachments">Attachments</a></li>
-                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#details-assistance">Assistance History</a></li>
+                        <li class="nav-item"><a class="nav-link" id="details-assignment-tab" data-bs-toggle="tab" href="#details-assignment">Evacuation Center</a></li>
                     </ul>
                     <div class="tab-content">
                         <div class="tab-pane fade show active" id="details-personal"><div id="summary-section"></div><div id="disaster-section"></div><div id="personal-section"></div><div id="housing-section"></div></div>
                         <div class="tab-pane fade" id="details-family"><div class="table-responsive"><table class="table table-row-dashed align-middle gy-4"><thead><tr class="fw-bold text-muted fs-7 text-uppercase"><th>No.</th><th>Full Name</th><th>Birthdate</th><th>Age</th><th>Relationship</th><th>Sex</th><th>Occupation</th><th>Monthly Income</th><th>Health</th><th>Remarks</th><th>Description</th></tr></thead><tbody id="family-members"></tbody></table></div></div>
-                        <div class="tab-pane fade" id="details-validation"><div id="validation-section"></div><div id="duplicate-section"></div></div>
                         <div class="tab-pane fade" id="details-assignment"><div id="assignment-section"></div></div>
-                        <div class="tab-pane fade" id="details-attachments"><div id="attachments-section" class="row g-5"></div></div>
-                        <div class="tab-pane fade" id="details-assistance"><div id="assistance-section"></div><div id="payout-section"></div></div>
                     </div>
                 </div>
             </div>
@@ -122,6 +108,30 @@
         if(!a.can_assign) $('#assignment-section .notice').last().text(a.lock_reason||'You do not have permission to modify this assignment.');
     };
 
+    document.querySelectorAll('.js-verify-tciss').forEach(button => button.addEventListener('click', async () => {
+        const confirmation = await Swal.fire({
+            title: 'Verify TCISS record?',
+            html: `Confirm that the TCISS information for <strong>${esc(button.dataset.household)}</strong> has been reviewed.`,
+            icon: 'question', showCancelButton: true, confirmButtonText: 'Yes, verify', confirmButtonColor: '#198754'
+        });
+        if (!confirmation.isConfirmed) return;
+
+        button.disabled = true;
+        try {
+            const response = await fetch(button.dataset.verifyUrl, {
+                method: 'PATCH', cache: 'no-store',
+                headers: {Accept:'application/json', 'X-CSRF-TOKEN':document.querySelector('meta[name=csrf-token]').content}
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.message || 'TCISS verification failed.');
+            await Swal.fire({text: payload.message, icon: 'success'});
+            window.location.reload();
+        } catch (error) {
+            button.disabled = false;
+            Swal.fire({text: error.message, icon: 'error'});
+        }
+    }));
+
     document.querySelectorAll('.js-open-tciss').forEach(button => button.addEventListener('click', async () => {
         sessionStorage.setItem('tcissScrollPosition', window.scrollY);
         modal.show();
@@ -129,21 +139,17 @@
         try {
             const response = await fetch(button.dataset.detailsUrl, {cache:'no-store', headers:{Accept:'application/json', 'X-Requested-With':'XMLHttpRequest'}});
             if (!response.ok) throw new Error(response.status === 403 ? 'You are not authorized to view this record.' : response.status === 404 ? 'The selected record could not be found.' : 'The record could not be loaded. Please try again.');
-            const {data:d} = await response.json(), f = d.affected_family, df = d.dafac, v = d.validation;
+            const {data:d} = await response.json(), f = d.affected_family, df = d.dafac;
             $('#details-reference').text(`${empty(d.masterlist.reference_number)} • ${empty(df?.reference_number)}`);
             $('#summary-badges').html([f?.status, d.masterlist.verification_status, d.duplicate_checks[0]?.resolution_status].filter(Boolean).map(badge).join(''));
             $('#summary-section').html(card('Record Summary', [['TCISS Reference',esc(d.masterlist.reference_number)],['DAFAC Reference',esc(df?.reference_number)],['Workflow Status',esc(f?.status)],['Verification Status',esc(d.masterlist.verification_status)],['Duplicate Check Status',esc(d.duplicate_checks[0]?.resolution_status)],['Date Created',date(d.masterlist.created_at)],['Last Updated',date(d.masterlist.updated_at)]]));
             $('#disaster-section').html(card('Disaster and Location Information', [['Disaster / Incident',esc(f?.disaster_name)],['Type of Disaster',esc(f?.disaster_type)],['Incident Date',date(f?.incident_date)],['Barangay',esc(f?.barangay)],['Evacuation Center',esc(f?.evacuation_center)],['Complete Address',esc(f?.complete_address)],['DAFAC Interview Date',date(df?.interview_date)]]));
             $('#personal-section').html(card('Household Head Information', [['Surname',esc(f?.surname)],['Given Name',esc(f?.given_name)],['Middle Name',esc(f?.middle_name)],['Full Name',esc(f?.full_name)],['Birthdate',date(f?.birthdate)],['Calculated Age',esc(f?.age)],['Sex',esc(f?.sex)],['Occupation',esc(f?.occupation)],['Monthly Income',money(f?.monthly_income)],['Contact Number',esc(f?.contact_number)]]));
-            $('#housing-section').html(card('Household and Housing Information', [['House Ownership',esc(f?.house_ownership)],['Housing Condition',esc(f?.housing_condition)],['Health Condition',esc(f?.health_condition)],['Total Family Members',esc(f?.member_count)],['Interviewed By',esc(df?.interviewed_by)],['Validated By',esc(v?.validated_by || df?.validated_by)],['Validation Date',date(v?.validated_at)],['Validation Notes',esc(v?.notes)]]));
+            $('#housing-section').html(card('Household and Housing Information', [['House Ownership',esc(f?.house_ownership)],['Housing Condition',esc(f?.housing_condition)],['Health Condition',esc(f?.health_condition)],['Total Family Members',esc(f?.member_count)],['Interviewed By',esc(df?.interviewed_by)]]));
             $('#member-count').text(d.family_members.length);
             $('#family-members').html(d.family_members.length ? d.family_members.map((m,i) => `<tr><td>${i+1}</td><td class="fw-bold">${esc(m.name)}</td><td>${date(m.birthdate)}</td><td>${esc(m.age)}</td><td>${esc(m.relationship)}</td><td>${esc(m.sex)}</td><td>${esc(m.occupation)}</td><td>${money(m.monthly_income)}</td><td>${badge(m.health_condition)}</td><td>${badge(m.remarks_code)}</td><td>${esc(remarks[m.remarks_code])}</td></tr>`).join('') : emptyRow(11));
-            $('#validation-section').html(card('Validation Information', [['Status',esc(v?.status)],['Validated Ownership',esc(v?.house_ownership)],['Validated Housing',esc(v?.housing_condition)],['Validated By',esc(v?.validated_by)],['Validation Date',date(v?.validated_at)],['Notes',esc(v?.notes)]]));
-            $('#duplicate-section').html(d.duplicate_checks.length ? d.duplicate_checks.map(x => card('Duplicate Check Information', [['Possible Duplicate',x.possible_duplicate_found?'Yes':'No'],['Match Score',esc(x.match_score)],['Match Reason',esc(x.match_reason)],['Matched Household',esc(x.matched_household)],['Resolution',esc(x.resolution_status)],['Resolved By',esc(x.resolved_by)],['Resolution Date',date(x.resolved_at)]])).join('') : card('Duplicate Check Information', [['Status','No data available']]));
             assignmentCard(d.assignment, button);
-            $('#attachments-section').html(d.attachments.length ? d.attachments.map(a => `<div class="col-md-4"><div class="card card-bordered h-100"><div class="card-body"><div class="fw-bold mb-2">${esc(a.type)}</div><div class="text-muted fs-7 mb-4">${esc(a.name)}</div><a href="${a.url}" class="btn btn-sm btn-light-primary" target="_blank" rel="noopener">View file</a></div></div></div>`).join('') : '<div class="col-12 text-center text-muted py-10">No data available</div>');
-            $('#assistance-section').html(d.assistance_history.length ? d.assistance_history.map(a => card('Assistance', [['Date',date(a.date)],['Kind',esc(a.kind)],['Quantity / Amount',money(a.quantity_amount)],['Provider',esc(a.provider)],['Released By',esc(a.released_by)]])).join('') : card('Assistance History', [['Status','No data available']]));
-            $('#payout-section').html(d.payout.length ? d.payout.map(p => card('Payout', [['Schedule',esc(p.schedule)],['Scheduled Date',date(p.scheduled_date)],['Status',esc(p.status)],['Released By',esc(p.released_by)],['Released Date',date(p.released_at)]])).join('') : card('Payout History', [['Status','No data available']]));
+            if (button.dataset.openAssignment) bootstrap.Tab.getOrCreateInstance(document.getElementById('details-assignment-tab')).show();
             $('#details-loading').addClass('d-none'); $('#details-content').removeClass('d-none');
         } catch (error) { $('#details-loading').addClass('d-none'); $('#details-error').text(error.message).removeClass('d-none'); }
     }));

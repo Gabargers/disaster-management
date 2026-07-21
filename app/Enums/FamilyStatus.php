@@ -16,7 +16,8 @@ enum FamilyStatus: string
     public function allowedNextStatuses(): array
     {
         return match($this) {
-            self::DRAFT, self::TCISS_VERIFIED => [self::DAFAC_INTAKE_COMPLETED],
+            self::DRAFT => [self::TCISS_VERIFIED, self::DAFAC_INTAKE_COMPLETED],
+            self::TCISS_VERIFIED => [self::DAFAC_INTAKE_COMPLETED],
             self::DAFAC_INTAKE_COMPLETED => [self::DUPLICATE_CHECK_PENDING, self::NEEDS_CORRECTION],
             self::DUPLICATE_CHECK_PENDING => [self::DUPLICATE_CLEARED,self::POSSIBLE_DUPLICATE],
             self::POSSIBLE_DUPLICATE => [self::DUPLICATE_CLEARED,self::DUPLICATE_CONFIRMED],

@@ -3,22 +3,29 @@
 namespace App\Http\Controllers\Disaster;
 
 use App\Http\Controllers\Controller;
+use App\Enums\FamilyStatus;
+use App\Models\Disaster\AuditLog;
 use App\Models\Disaster\TcissMasterlistRecord;
 use App\Models\Disaster\UploadedDocument;
 use App\Services\Disaster\DafacIntakeIntegrationService;
+use App\Services\Disaster\DisasterAssistanceWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TcissMasterlistController extends Controller
 {
-    public function __construct(private DafacIntakeIntegrationService $integration) {}
+    public function __construct(
+        private DafacIntakeIntegrationService $integration,
+        private DisasterAssistanceWorkflowService $workflow
+    ) {}
     public function index(Request $request)
     {
         $records = TcissMasterlistRecord::query()
-            ->with(['barangay', 'evacuationCenter', 'dafacRecord', 'affectedFamily.disaster', 'affectedFamily.familyMembers', 'affectedFamily.validationRecords', 'affectedFamily.payoutReleases'])
+            ->with(['barangay', 'evacuationCenter', 'dafacRecord', 'affectedFamily.disaster', 'affectedFamily.familyMembers', 'affectedFamily.payoutReleases'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = '%'.$request->string('search')->trim().'%';
                 $query->where(function ($query) use ($search) {
@@ -31,21 +38,6 @@ class TcissMasterlistController extends Controller
             ->when($request->filled('evacuation_center_id'), fn ($query) => $query->where('evacuation_center_id', $request->integer('evacuation_center_id')))
             ->when($request->filled('disaster_id'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('disaster_id',$request->integer('disaster_id'))))
             ->when($request->filled('verification_status'), fn ($query) => $query->where('verification_status',$request->verification_status))
-            ->when($request->filled('workflow_status'), fn ($query) => $query->whereHas('affectedFamily', fn($q)=>$q->where('status',$request->workflow_status)))
-            ->when($request->filled('validation_status'), function ($query) use ($request) {
-                $status = $request->string('validation_status')->toString();
-
-                $query->whereHas('affectedFamily', function ($query) use ($status) {
-                    match ($status) {
-                        'Validated' => $query->whereHas('validationRecords', fn ($validation) => $validation->where('status', 'Validated')),
-                        'Needs Correction' => $query->where('status', \App\Enums\FamilyStatus::NEEDS_CORRECTION),
-                        'Rejected' => $query->where('status', \App\Enums\FamilyStatus::REJECTED),
-                        'For Validation' => $query->whereDoesntHave('validationRecords', fn ($validation) => $validation->where('status', 'Validated'))
-                            ->whereNotIn('status', [\App\Enums\FamilyStatus::NEEDS_CORRECTION, \App\Enums\FamilyStatus::REJECTED]),
-                        default => null,
-                    };
-                });
-            })
             ->when($request->filled('payout_status'), fn ($query) => $query->whereHas('affectedFamily.payoutReleases', fn($q)=>$q->where('status',$request->payout_status)))
             ->when($request->filled('date_from'), fn ($query) => $query->whereDate('created_at','>=',$request->date_from))
             ->when($request->filled('date_to'), fn ($query) => $query->whereDate('created_at','<=',$request->date_to))
@@ -86,6 +78,8 @@ class TcissMasterlistController extends Controller
             'masterlist' => [
                 'id' => $record->id, 'reference_number' => $record->source_reference, 'source' => $record->source,
                 'verification_status' => $record->verification_status,
+                'can_verify' => $record->verification_status !== 'Verified',
+                'verify_url' => route('disaster.tciss.verify', $record),
                 'verified_by' => $record->verifier?->name, 'verified_at' => $record->verified_at?->toIso8601String(),
                 'created_at' => $record->created_at?->toIso8601String(), 'updated_at' => $record->updated_at?->toIso8601String(),
             ],
@@ -146,8 +140,55 @@ class TcissMasterlistController extends Controller
             ->header('Vary', 'Cookie');
     }
 
+    public function verify(Request $request, TcissMasterlistRecord $record): JsonResponse
+    {
+        if ($record->verification_status === 'Verified') {
+            return response()->json(['success' => true, 'message' => 'This TCISS record is already verified.']);
+        }
+
+        DB::transaction(function () use ($request, $record) {
+            $record = TcissMasterlistRecord::lockForUpdate()->findOrFail($record->id);
+            if ($record->verification_status === 'Verified') return;
+
+            $record->update([
+                'verification_status' => 'Verified',
+                'verified_by' => $request->user()->id,
+                'verified_at' => now(),
+            ]);
+
+            $family = $record->affectedFamily;
+            if ($family?->status === FamilyStatus::DRAFT) {
+                $this->workflow->transition($family, FamilyStatus::TCISS_VERIFIED, $request->user(), 'tciss_verified');
+            } elseif ($family) {
+                $family->workflowHistories()->create([
+                    'from_status' => $family->status->value,
+                    'to_status' => $family->status->value,
+                    'action' => 'tciss_verified',
+                    'performed_by' => $request->user()->id,
+                    'performed_at' => now(),
+                ]);
+            }
+
+            AuditLog::create([
+                'user_id' => $request->user()->id,
+                'auditable_type' => TcissMasterlistRecord::class,
+                'auditable_id' => $record->id,
+                'action' => 'tciss_verified',
+                'new_values' => ['verification_status' => 'Verified'],
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'TCISS record verified. You may now assign an evacuation center.',
+        ]);
+    }
+
     public function assignEvacuationCenter(Request $request, TcissMasterlistRecord $record): JsonResponse
     {
+        abort_unless($record->verification_status === 'Verified', 422, 'Verify the TCISS record before assigning an evacuation center.');
         abort_unless($record->affectedFamily, 422, 'This TCISS record is not linked to an affected family.');
         $data=$request->validate(['barangay_id'=>['required','integer','exists:barangays,id'],'evacuation_center_id'=>['required','integer','exists:evacuation_centers,id'],
             'assignment_date'=>['required','date','before_or_equal:today'],'notes'=>['nullable','string','max:1000'],'transfer_reason'=>['nullable','string','max:1000']]);
@@ -170,7 +211,7 @@ class TcissMasterlistController extends Controller
         $history=$family->evacuationCenterAssignments->sortByDesc('assigned_at')->values();
         $current=$history->firstWhere('status','ACTIVE');
         $centers=\App\Models\Disaster\EvacuationCenter::where('barangay_id',$family->barangay_id)->where('disaster_id',$family->disaster_id)->where('is_active',true)->where('status','ACTIVE')->with('activeAssignments.family.familyMembers')->orderBy('name')->get();
-        $lockReason=$current && $family->payoutReleases()->where('status','Released')->exists()?'Assignment cannot be changed because the payout has already been released.':null;
+        $lockReason=$record->verification_status!=='Verified'?'Verify the TCISS record before assigning an evacuation center.':($current && $family->payoutReleases()->where('status','Released')->exists()?'Assignment cannot be changed because the payout has already been released.':null);
         return [
             'can_assign'=>request()->user()->can('evacuation_center.assign_family')&&!$lockReason,
             'lock_reason'=>$lockReason,

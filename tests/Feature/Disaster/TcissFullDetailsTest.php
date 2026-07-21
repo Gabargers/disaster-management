@@ -55,29 +55,59 @@ class TcissFullDetailsTest extends TestCase
             ->assertOk()->assertJsonCount(0, 'data.family_members');
     }
 
-    public function test_tciss_table_shows_persistent_validation_status_instead_of_raw_workflow_status(): void
+    public function test_tciss_table_presents_verification_then_evacuation_center_flow(): void
     {
+        TcissMasterlistRecord::firstOrFail()->update(['verification_status' => 'Needs Review']);
+
         $this->actingAs($this->user)->get(route('disaster.tciss.index'))
             ->assertOk()
-            ->assertSee('Verification / Validation')
-            ->assertSee('Validated');
+            ->assertSee('TCISS Status')
+            ->assertSee('Evacuation Center')
+            ->assertSee('Verify');
     }
 
-    public function test_tciss_records_can_be_filtered_by_validation_status(): void
+    public function test_tciss_must_be_verified_before_evacuation_center_assignment(): void
     {
-        $validated = TcissMasterlistRecord::whereHas(
-            'affectedFamily.validationRecords',
-            fn ($query) => $query->where('status', 'Validated')
-        )->firstOrFail();
+        $record = TcissMasterlistRecord::whereHas('affectedFamily')->firstOrFail();
+        $record->update(['verification_status' => 'Needs Review', 'verified_by' => null, 'verified_at' => null]);
 
-        $response = $this->actingAs($this->user)->get(route('disaster.tciss.index', [
-            'validation_status' => 'Validated',
-        ]))->assertOk();
+        $this->actingAs($this->user)
+            ->postJson(route('disaster.tciss.assign-evacuation-center', $record), [])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Verify the TCISS record before assigning an evacuation center.');
 
-        $this->assertTrue($response->viewData('records')->contains('id', $validated->id));
-        $this->assertTrue($response->viewData('records')->every(
-            fn ($record) => $record->affectedFamily->validationRecords->contains('status', 'Validated')
-        ));
+        $this->actingAs($this->user)
+            ->patchJson(route('disaster.tciss.verify', $record))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $record->refresh();
+        $this->assertSame('Verified', $record->verification_status);
+        $this->assertSame($this->user->id, $record->verified_by);
+        $this->assertNotNull($record->verified_at);
+    }
+
+    public function test_draft_household_moves_to_tciss_verified_when_tciss_is_verified(): void
+    {
+        $record = TcissMasterlistRecord::whereHas('affectedFamily')->firstOrFail();
+        $record->affectedFamily->update(['status' => \App\Enums\FamilyStatus::DRAFT]);
+        $record->update(['verification_status' => 'Needs Review', 'verified_by' => null, 'verified_at' => null]);
+
+        $this->actingAs($this->user)
+            ->patchJson(route('disaster.tciss.verify', $record))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(
+            \App\Enums\FamilyStatus::TCISS_VERIFIED,
+            $record->affectedFamily->refresh()->status
+        );
+        $this->assertDatabaseHas('workflow_histories', [
+            'affected_family_id' => $record->affected_family_id,
+            'from_status' => 'DRAFT',
+            'to_status' => 'TCISS_VERIFIED',
+            'action' => 'tciss_verified',
+        ]);
     }
 
     public function test_attachment_uses_a_temporary_secure_url(): void

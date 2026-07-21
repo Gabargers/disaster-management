@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\AccountManagementController;
+use App\Http\Controllers\Auth\ActivityLogController;
 use App\Http\Controllers\Cms\BarangayController;
 use App\Http\Controllers\Disaster\TcissMasterlistController;
 use App\Http\Controllers\Disaster\EvacuationCenterController;
@@ -34,9 +35,20 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::delete('/{account}', 'destroy')->name('destroy');
         });
 
+    Route::controller(ActivityLogController::class)
+        ->prefix('activity-logs')
+        ->name('activity-logs.')
+        ->middleware('role:superadmin')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/data', 'data')->name('data');
+        });
+
     Route::prefix('disaster')->name('disaster.')->group(function () {
         Route::get('/tciss-masterlist', [TcissMasterlistController::class, 'index'])->middleware('permission:manage tciss masterlist')->name('tciss.index');
         Route::get('/tciss-masterlist/{record}/full-details', [TcissMasterlistController::class, 'fullDetails'])->middleware('permission:manage tciss masterlist')->name('tciss.full-details');
+        Route::patch('/tciss-masterlist/{record}/verify', [TcissMasterlistController::class, 'verify'])
+            ->middleware('permission:manage tciss masterlist')->name('tciss.verify');
         Route::match(['post','put'], '/tciss-masterlist/{record}/evacuation-center-assignment', [TcissMasterlistController::class, 'assignEvacuationCenter'])
             ->middleware(['permission:manage tciss masterlist', 'permission:evacuation_center.assign_family'])->name('tciss.assign-evacuation-center');
         Route::get('/tciss-masterlist/documents/{document}', [TcissMasterlistController::class, 'document'])

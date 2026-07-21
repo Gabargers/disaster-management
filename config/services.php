@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'system_a' => [
+        'api_token' => env('SYSTEM_A_API_TOKEN'),
+    ],
+
 ];

@@ -101,6 +101,16 @@
                     </div>
                 @endif
 
+                @if ($isSuperAdmin)
+                    <div class="menu-item py-2">
+                        <a href="{{ route('activity-logs.index') }}" data-sidebar-route="activity-logs.index"
+                            class="menu-link menu-center flex-column {{ request()->routeIs('activity-logs.*') ? 'active' : '' }}" style="gap: 2px;">
+                            <span class="menu-icon me-0"><i class="ki-duotone ki-document fs-2x"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></span>
+                            <span class="menu-title fs-7 text-center">Activity Logs</span>
+                        </a>
+                    </div>
+                @endif
+
                 @if ($canCms)
                     <div data-kt-menu-trigger="{default: 'click', lg: 'hover'}" data-kt-menu-placement="right-start"
                         class="menu-item py-2 {{ $cmsOpen ? 'show here' : '' }}">
