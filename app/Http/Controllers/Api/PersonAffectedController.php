@@ -17,16 +17,36 @@ class PersonAffectedController extends Controller
         $data = $request->validated();
 
         [$person, $event, $personCreated, $eventCreated] = DB::transaction(function () use ($data) {
-            $dateTagged = Carbon::parse($data['date_tagged'])->utc()->format('Y-m-d H:i:s.u');
-            $person = PersonAffected::firstOrCreate([
-                'control_number' => $data['control_number'],
-            ]);
+            $dateTagged = Carbon::parse($data['date_tagged'])->utc();
+            $eventDate = $dateTagged->toDateString();
+            $person = PersonAffected::firstOrCreate(['control_number' => $data['control_number']]);
             $personCreated = $person->wasRecentlyCreated;
 
+            $profile = collect($data)->only([
+                'full_name', 'birthdate', 'age', 'sex', 'code', 'occupation', 'monthly_income',
+                'health_condition', 'district', 'barangay', 'street', 'city', 'family_head_name',
+                'family_head_control_number', 'relationship', 'housing',
+            ])->all();
+            if ($profile !== []) {
+                $person->update($profile);
+            }
+
+            if (array_key_exists('family_members', $data)) {
+                $controlNumbers = collect($data['family_members'])->pluck('control_number');
+                $person->familyMembers()->whereNotIn('control_number', $controlNumbers)->delete();
+                foreach ($data['family_members'] as $member) {
+                    $person->familyMembers()->updateOrCreate(
+                        ['control_number' => $member['control_number']],
+                        $member
+                    );
+                }
+            }
+
             $event = $person->statuses()->firstOrCreate([
-                'date_tagged' => $dateTagged,
+                'event_date' => $eventDate,
             ], [
                 'status' => $data['status'],
+                'date_tagged' => $dateTagged->format('Y-m-d H:i:s.u'),
             ]);
 
             return [$person, $event, $personCreated, $event->wasRecentlyCreated];

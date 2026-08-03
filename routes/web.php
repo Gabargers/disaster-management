@@ -8,6 +8,7 @@ use App\Http\Controllers\Disaster\TcissMasterlistController;
 use App\Http\Controllers\Disaster\EvacuationCenterController;
 use App\Http\Controllers\Disaster\DafacIntakeController;
 use App\Http\Controllers\Disaster\DisasterWorkflowController;
+use App\Http\Controllers\Disaster\PersonAffectedController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AuthController::class, 'index'])->name('home');
@@ -46,6 +47,10 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::prefix('disaster')->name('disaster.')->group(function () {
         Route::get('/tciss-masterlist', [TcissMasterlistController::class, 'index'])->middleware('permission:manage tciss masterlist')->name('tciss.index');
+        Route::get('/tciss-person-affecteds', [PersonAffectedController::class, 'index'])
+            ->middleware('permission:manage tciss masterlist')->name('person-affecteds.index');
+        Route::get('/tciss-person-affecteds/{personAffected}', [PersonAffectedController::class, 'show'])
+            ->middleware('permission:manage tciss masterlist')->name('person-affecteds.show');
         Route::get('/tciss-masterlist/{record}/full-details', [TcissMasterlistController::class, 'fullDetails'])->middleware('permission:manage tciss masterlist')->name('tciss.full-details');
         Route::patch('/tciss-masterlist/{record}/verify', [TcissMasterlistController::class, 'verify'])
             ->middleware('permission:manage tciss masterlist')->name('tciss.verify');

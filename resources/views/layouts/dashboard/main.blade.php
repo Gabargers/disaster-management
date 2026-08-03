@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/style.bundle.css') }}" type="text/css">
     <link rel="stylesheet" href="{{ asset('assets/css/header-bg.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/plugins/custom/datatables/datatables.bundle.css') }}">
-    <link rel="icon" type="image/png" href="{{ asset('images/office_logo.webp') }}">
+    <link rel="icon" type="image/webp" href="{{ asset('images/CSWDO.webp') }}">
 
     <style>
         [x-cloak] {

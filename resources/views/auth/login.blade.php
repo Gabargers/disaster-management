@@ -32,7 +32,7 @@
             <div class="login-card">
                 @include('components.alert')
                 <div class="text-center mb-9">
-                    <img class="login-office-logo mb-5" src="{{ asset('images/office_logo.webp') }}" alt="Office Logo">
+                    <img class="login-office-logo mb-5" src="{{ asset('images/CSWDO.webp') }}" alt="CSWDO Logo">
                     <h2 class="fw-bolder text-gray-900 fs-2x mb-2">Welcome back</h2>
                     <div class="text-gray-500 fw-semibold">Sign in to continue to the response portal</div>
                 </div>

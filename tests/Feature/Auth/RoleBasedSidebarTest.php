@@ -24,6 +24,7 @@ class RoleBasedSidebarTest extends TestCase
         $response = $this->actingAs($coordinator)->get(route('dashboard'))->assertOk();
 
         $response->assertSee('data-sidebar-route="disaster.tciss.index"', false)
+            ->assertSee('data-sidebar-route="disaster.person-affecteds.index"', false)
             ->assertSee('data-sidebar-route="disaster.reports.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.payroll.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.payouts.index"', false)
@@ -40,6 +41,7 @@ class RoleBasedSidebarTest extends TestCase
             ->assertSee('data-sidebar-route="disaster.payouts.index"', false)
             ->assertSee('data-sidebar-route="disaster.reports.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.tciss.index"', false)
+            ->assertDontSee('data-sidebar-route="disaster.person-affecteds.index"', false)
             ->assertDontSee('data-sidebar-route="accounts.index"', false);
     }
 

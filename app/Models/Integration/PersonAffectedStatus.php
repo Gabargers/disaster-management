@@ -9,7 +9,7 @@ class PersonAffectedStatus extends Model
 {
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
-    protected $fillable = ['person_affected_id', 'status', 'date_tagged'];
+    protected $fillable = ['person_affected_id', 'status', 'date_tagged', 'event_date'];
 
     protected function casts(): array
     {

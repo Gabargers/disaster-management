@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700" />
     <link rel="stylesheet" href="{{ asset('assets/plugins/global/plugins.bundle.css') }}" type="text/css">
     <link rel="stylesheet" href="{{ asset('assets/css/style.bundle.css') }}" type="text/css">
-    <link rel="icon" type="image/png" href="{{ asset('images/office_logo.webp') }}">
+    <link rel="icon" type="image/webp" href="{{ asset('images/CSWDO.webp') }}">
 
     <style>
         [x-cloak] {

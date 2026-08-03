@@ -5,10 +5,7 @@
     if (!el) return;
 
     const dots = document.getElementById("kt_loader_dots");
-    const logo = document.getElementById("kt_loader_logo");
-
     let dotsTimer = null;
-    let spinAnim = null;
     let suppressNavigationLoaderUntil = 0;
 
     const startDots = () => {
@@ -27,31 +24,10 @@
         dotsTimer = null;
     };
 
-    const startSpin = () => {
-        if (!logo || spinAnim) return;
-
-        try {
-            spinAnim = logo.animate(
-                [
-                    { transform: "rotate(0deg)" },
-                    { transform: "rotate(360deg)" },
-                ],
-                { duration: 2500, iterations: Infinity, easing: "linear" },
-            );
-        } catch (e) {}
-    };
-
-    const stopSpin = () => {
-        if (!spinAnim) return;
-        spinAnim.cancel();
-        spinAnim = null;
-    };
-
     const show = () => {
         el.classList.remove("d-none");
         el.style.opacity = "1";
         el.style.display = "flex";
-        startSpin();
         startDots();
     };
 
@@ -60,8 +36,7 @@
         setTimeout(() => {
             el.classList.add("d-none");
             el.style.display = "none";
-        }, 200);
-        stopSpin();
+        }, 380);
         stopDots();
     };
 
@@ -95,16 +70,6 @@
 
         return true;
     };
-
-    if (logo) {
-        logo.addEventListener(
-            "error",
-            () => {
-                logo.style.display = "none";
-            },
-            { once: true },
-        );
-    }
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", show, { once: true });
