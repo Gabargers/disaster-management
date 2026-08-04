@@ -1,0 +1,5 @@
+# Add this inside the HTTPS VirtualHost serving this application.
+# 262144 bytes = 256 KiB. Keep this synchronized with SYSTEM_A_MAX_BODY_BYTES.
+<Location "/api/person-affecteds">
+    LimitRequestBody 262144
+</Location>

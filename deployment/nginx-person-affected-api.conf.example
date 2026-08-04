@@ -1,0 +1,6 @@
+# Add this inside the HTTPS server block, before the general PHP location.
+# Keep this synchronized with SYSTEM_A_MAX_BODY_BYTES.
+location = /api/person-affecteds {
+    client_max_body_size 256k;
+    try_files $uri $uri/ /index.php?$query_string;
+}

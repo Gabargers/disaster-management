@@ -21,6 +21,10 @@ class EnsureSystemApiTokenIsValid
             ], Response::HTTP_UNAUTHORIZED);
         }
 
+        // Give downstream middleware a stable authenticated identity without
+        // exposing or storing the bearer token itself in cache keys.
+        $request->attributes->set('api_client_id', 'legacy:'.hash('sha256', $providedToken));
+
         return $next($request);
     }
 }

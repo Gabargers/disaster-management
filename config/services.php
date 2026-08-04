@@ -37,6 +37,10 @@ return [
 
     'system_a' => [
         'api_token' => env('SYSTEM_A_API_TOKEN'),
+        'rate_limit_per_minute' => env('SYSTEM_A_RATE_LIMIT_PER_MINUTE', 60),
+        'rate_limit_burst_per_second' => env('SYSTEM_A_RATE_LIMIT_BURST_PER_SECOND', 10),
+        'max_body_bytes' => env('SYSTEM_A_MAX_BODY_BYTES', 262144),
+        'clock_skew_seconds' => env('SYSTEM_A_CLOCK_SKEW_SECONDS', 300),
     ],
 
 ];
