@@ -40,7 +40,7 @@ class StorePersonAffectedRequest extends FormRequest
             'sex' => ['nullable', 'string', 'max:30'],
             'code' => ['nullable', 'string', 'max:255'],
             'occupation' => ['nullable', 'string', 'max:255'],
-            'monthly_income' => ['nullable', 'numeric', 'min:0'],
+            'monthly_income' => ['nullable', 'string', 'max:255'],
             'health_condition' => ['nullable', 'string', 'max:255'],
             'district' => ['nullable', 'string', 'max:255'],
             'barangay' => ['nullable', 'string', 'max:255'],

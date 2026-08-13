@@ -1,5 +1,7 @@
 @extends('layouts.dashboard.main')
 
+@section('uses_datatables', true)
+
 @section('content')
 <div class="card card-flush shadow-sm">
     <div class="card-header align-items-center">

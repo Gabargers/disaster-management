@@ -322,7 +322,7 @@ class PersonAffectedApiTest extends TestCase
             'control_number' => 'CN-0001-00A1', 'status' => 'affected',
             'date_tagged' => '2026-07-22T08:30:00+08:00', 'full_name' => 'Walker, Ella Considine',
             'birthdate' => '2002-10-25', 'age' => 23, 'sex' => 'Female', 'occupation' => 'Septic Tank Servicer',
-            'monthly_income' => 58905, 'health_condition' => 'Arthritis', 'district' => 'District 2',
+            'monthly_income' => 'PHP 58,905 monthly', 'health_condition' => 'Arthritis', 'district' => 'District 2',
             'barangay' => 'South Daang Hari', 'street' => '356 Concepcion Plains', 'city' => 'Taguig',
             'family_head_name' => 'Walker, Ella Considine', 'family_head_control_number' => 'CN-0001-00A1',
             'relationship' => 'Self (Family Head)', 'housing' => 'Sharer',

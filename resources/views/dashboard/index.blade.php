@@ -7,6 +7,7 @@
         ['VALIDATION_PENDING', 'For Validation', 'DAFAC households awaiting validation', 'ki-shield-tick', 'warning', route('disaster.payouts.index')],
         ['PAYOUT_SCHEDULED', 'Scheduled Payouts', 'Households scheduled for release', 'ki-calendar-8', 'info', route('disaster.payouts.index')],
         ['RELEASED_PAYOUTS', 'Released Payouts', 'Households that received assistance', 'ki-dollar', 'success', route('disaster.payroll.index')],
+        ['ASSIGNED_EVACUEES', 'Assigned Evacuees', ($metrics['ACTIVE_EVACUATION_CENTERS'] ?? 0).' active evacuation centers', 'ki-geolocation', 'danger', route('disaster.person-affecteds.index')],
     ];
     $attentionCards = [
         ['VALIDATION_PENDING', 'For validation', 'warning', route('disaster.payouts.index')],
@@ -16,6 +17,7 @@
     ];
     $stages = [
         ['Families', 'TOTAL', 'ki-people', route('disaster.reports.index')],
+        ['Evacuation', 'ASSIGNED_EVACUEES', 'ki-geolocation', route('disaster.person-affecteds.index')],
         ['For Validation', 'VALIDATION_PENDING', 'ki-shield-tick', route('disaster.payouts.index')],
         ['Validated', 'VALIDATED', 'ki-check-circle', route('disaster.payouts.index')],
         ['Payout Pending', 'PAYOUT_PENDING', 'ki-time', route('disaster.payouts.index')],
@@ -65,35 +67,34 @@
     </div>
 </div>
 
-<div class="row g-5 mb-7">
+<div class="dashboard-metrics-grid mb-7">
     @foreach($mainCards as [$key, $label, $description, $icon, $tone, $url])
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="{{ $url }}{{ $key === 'TOTAL' ? '' : '?status='.$key }}" class="card metric-card card-flush shadow-sm h-100 border-start border-4 border-{{ $tone }}">
-                <div class="card-body p-6">
-                    <div class="d-flex justify-content-between align-items-start mb-5">
-                        <div class="symbol symbol-45px"><div class="symbol-label bg-light-{{ $tone }}"><i class="ki-duotone {{ $icon }} fs-2x text-{{ $tone }}"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div></div>
-                        <i class="ki-duotone ki-arrow-right fs-2 text-muted"><span class="path1"></span><span class="path2"></span></i>
-                    </div>
-                    <div class="fs-2hx fw-bold text-gray-900 mb-1">{{ number_format($metrics[$key] ?? 0) }}</div>
-                    <div class="fw-bold text-gray-800">{{ $label }}</div>
-                    <div class="text-muted fs-7 mt-1">{{ $description }}</div>
+        <a href="{{ $url }}{{ in_array($key, ['TOTAL', 'ASSIGNED_EVACUEES'], true) ? '' : '?status='.$key }}" class="card metric-card metric-card-{{ $tone }} card-flush shadow-sm h-100">
+            <div class="card-body">
+                <div class="metric-card-top">
+                    <div class="metric-icon bg-light-{{ $tone }}"><i class="ki-duotone {{ $icon }} fs-2x text-{{ $tone }}"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
+                    <span class="metric-arrow"><i class="ki-duotone ki-arrow-up-right fs-3"><span class="path1"></span><span class="path2"></span></i></span>
                 </div>
-            </a>
-        </div>
+                <div class="metric-value">{{ number_format($metrics[$key] ?? 0) }}</div>
+                <div class="metric-label">{{ $label }}</div>
+                <div class="metric-description">{{ $description }}</div>
+            </div>
+        </a>
     @endforeach
 </div>
 
 <div class="row g-7 mb-7">
     <div class="col-xl-9">
-        <div class="card card-flush shadow-sm h-100">
-            <div class="card-header"><div class="card-title"><div><h3 class="fw-bold mb-1">Assistance Workflow</h3><div class="text-muted fs-7">Select a stage to open its current queue</div></div></div></div>
-            <div class="card-body pt-2">
+        <div class="card workflow-card card-flush shadow-sm h-100">
+            <div class="card-header align-items-center border-0 pb-0"><div class="card-title"><div><h3 class="fw-bold mb-1">Assistance Workflow</h3><div class="text-muted fs-7">Select a stage to open its current queue</div></div></div><div class="card-toolbar"><span class="badge badge-light-primary">Live workflow</span></div></div>
+            <div class="card-body pt-5">
                 <div class="workflow-track">
                     @foreach($stages as [$label, $key, $icon, $url])
-                        <a href="{{ $url }}{{ in_array($key, ['TOTAL','RELEASED_PAYOUTS'], true) ? '' : '?status='.$key }}" class="workflow-stage text-center">
+                        <a href="{{ $url }}{{ in_array($key, ['TOTAL','RELEASED_PAYOUTS','ASSIGNED_EVACUEES'], true) ? '' : '?status='.$key }}" class="workflow-stage text-center">
                             <div class="workflow-icon mx-auto"><i class="ki-duotone {{ $icon }} fs-2x"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
-                            <div class="fs-2 fw-bold text-gray-900 mt-3">{{ number_format($metrics[$key] ?? 0) }}</div>
-                            <div class="fs-7 fw-semibold text-muted">{{ $label }}</div>
+                            <div class="workflow-count">{{ number_format($metrics[$key] ?? 0) }}</div>
+                            <div class="workflow-label">{{ $label }}</div>
+                            <div class="workflow-open">Open <i class="ki-duotone ki-arrow-right fs-5"><span class="path1"></span><span class="path2"></span></i></div>
                         </a>
                     @endforeach
                 </div>
@@ -120,11 +121,31 @@
 <style>
     .dashboard-hero{background:linear-gradient(120deg,#4a0d18 0%,#731c2b 58%,#9b2c3f 100%)}
     .dashboard-hero:after{content:"";position:absolute;width:360px;height:360px;border:70px solid rgba(255,255,255,.08);border-radius:50%;right:-80px;top:-170px}
-    .metric-card{transition:transform .18s ease,box-shadow .18s ease}.metric-card:hover{transform:translateY(-3px);box-shadow:0 .75rem 1.5rem rgba(0,0,0,.09)!important}
-    .workflow-track{display:grid;grid-template-columns:repeat(7,1fr);position:relative;gap:8px}.workflow-track:before{content:"";position:absolute;height:2px;background:#e4e6ef;left:7%;right:7%;top:27px}
-    .workflow-stage{position:relative;z-index:1;padding:0 4px}.workflow-icon{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f1f6ff;color:#1877c9;border:4px solid #fff;box-shadow:0 2px 9px rgba(24,119,201,.15);transition:.18s}.workflow-stage:hover .workflow-icon{background:#1877c9;color:#fff;transform:scale(1.06)}
-    @media(max-width:991.98px){.workflow-track{grid-template-columns:repeat(4,1fr);row-gap:28px}.workflow-track:before{display:none}}
-    @media(max-width:575.98px){.workflow-track{grid-template-columns:repeat(2,1fr)}}
+    .dashboard-metrics-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.25rem}
+    .metric-card{position:relative;overflow:hidden;border:1px solid #edf0f5;border-top:3px solid transparent;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+    .metric-card:after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;right:-42px;bottom:-48px;background:currentColor;opacity:.045;pointer-events:none}
+    .metric-card-primary{border-top-color:#3e97ff;color:#3e97ff}.metric-card-warning{border-top-color:#ffc700;color:#ffc700}.metric-card-info{border-top-color:#7239ea;color:#7239ea}.metric-card-success{border-top-color:#50cd89;color:#50cd89}.metric-card-danger{border-top-color:#f1416c;color:#f1416c}
+    .metric-card .card-body{display:flex;min-height:205px;padding:1.55rem;flex-direction:column}
+    .metric-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem}
+    .metric-icon{display:flex;width:46px;height:46px;border-radius:12px;align-items:center;justify-content:center}
+    .metric-arrow{display:flex;width:32px;height:32px;border-radius:50%;align-items:center;justify-content:center;color:#a1a5b7;background:#f6f8fb;transition:.18s}
+    .metric-value{color:#181c32;font-size:2rem;line-height:1;font-weight:800;letter-spacing:-.04em;margin-bottom:.55rem}
+    .metric-label{color:#3f4254;font-size:.95rem;line-height:1.3;font-weight:700;margin-bottom:.35rem}
+    .metric-description{color:#7e8299;font-size:.78rem;line-height:1.45;margin-top:auto}
+    .metric-card:hover{transform:translateY(-4px);border-color:currentColor;box-shadow:0 .8rem 1.8rem rgba(24,28,50,.09)!important}
+    .metric-card:hover .metric-arrow{color:#fff;background:#181c32}.metric-card:hover .metric-arrow i{color:#fff!important}
+    .workflow-card{border:1px solid #edf0f5}
+    .workflow-track{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));position:relative;gap:.65rem}.workflow-track:before{content:"";position:absolute;height:2px;background:linear-gradient(90deg,#dbeafe,#c7d2fe,#dbeafe);left:5%;right:5%;top:31px}
+    .workflow-stage{position:relative;z-index:1;display:flex;min-width:0;padding:.45rem .25rem .75rem;flex-direction:column;align-items:center;border-radius:12px;transition:background .18s ease,transform .18s ease}
+    .workflow-icon{display:flex;width:62px;height:62px;border-radius:18px;align-items:center;justify-content:center;color:#1877c9;background:#f1f6ff;border:5px solid #fff;box-shadow:0 4px 14px rgba(24,119,201,.14);transition:background .18s,color .18s,transform .18s}
+    .workflow-count{color:#181c32;font-size:1.45rem;line-height:1;font-weight:800;margin-top:1rem}
+    .workflow-label{min-height:2.2rem;color:#5e6278;font-size:.76rem;line-height:1.25;font-weight:700;margin-top:.4rem;display:flex;align-items:flex-start;justify-content:center}
+    .workflow-open{display:flex;align-items:center;gap:.2rem;color:#a1a5b7;font-size:.7rem;font-weight:600;margin-top:.45rem;opacity:0;transform:translateY(3px);transition:.18s}
+    .workflow-stage:hover{background:#f8faff;transform:translateY(-2px)}.workflow-stage:hover .workflow-icon{background:#1877c9;color:#fff;transform:scale(1.04)}.workflow-stage:hover .workflow-open{color:#1877c9;opacity:1;transform:translateY(0)}
+    @media(max-width:1399.98px){.dashboard-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:1199.98px){.workflow-track{grid-template-columns:repeat(4,1fr);row-gap:1rem}.workflow-track:before{display:none}.workflow-open{opacity:1;transform:none}}
+    @media(max-width:991.98px){.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}
+    @media(max-width:575.98px){.dashboard-metrics-grid{grid-template-columns:1fr}.metric-card .card-body{min-height:180px}.workflow-track{grid-template-columns:repeat(2,1fr)}.workflow-stage{padding:.65rem .25rem}.workflow-icon{width:56px;height:56px}}
 </style>
 @endpush
 

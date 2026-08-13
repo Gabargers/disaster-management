@@ -7,12 +7,13 @@ use App\Models\Disaster\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Integration\PersonAffected;
 
 class EvacuationCenter extends Model
 {
     use HasUuid;
 
-    protected $fillable = ['uuid', 'disaster_id', 'barangay_id', 'name', 'address', 'contact_person', 'contact_number', 'capacity', 'description', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active'];
+    protected $fillable = ['uuid', 'cswdo_catalog_id', 'disaster_id', 'barangay_id', 'district', 'name', 'address', 'contact_person', 'assistant_coordinator', 'contact_number', 'capacity', 'description', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active'];
 
     protected function casts(): array
     {
@@ -35,4 +36,5 @@ class EvacuationCenter extends Model
     public function activeAssignments(): HasMany { return $this->assignments()->where('status', 'ACTIVE')->whereNull('unassigned_at'); }
     public function payoutSessions(): HasMany { return $this->hasMany(EvacuationCenterPayoutSession::class); }
     public function payoutReleases(): HasMany { return $this->hasMany(PayoutRelease::class); }
+    public function personAffecteds(): HasMany { return $this->hasMany(PersonAffected::class); }
 }

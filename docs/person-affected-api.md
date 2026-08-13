@@ -150,6 +150,7 @@ available.
 - `date_tagged` must include `Z` or a numeric UTC offset and cannot be more than five minutes in
   the future. `SYSTEM_A_CLOCK_SKEW_SECONDS` controls this allowance.
 - `birthdate`, when supplied, cannot be later than the current UTC date.
+- `monthly_income`, when supplied, is a string (maximum 255 characters) and is stored exactly as sent by TCISS.
 - Person, family-head, and family-member control numbers are trimmed, converted to uppercase, and
   have whitespace removed before validation and database lookup. For example, ` cn- 10001 ` is
   stored as `CN-10001`.

@@ -11,6 +11,7 @@ use App\Models\Disaster\AuditLog;
 use App\Models\Disaster\Disaster;
 use App\Models\Disaster\DafacRecord;
 use App\Models\Disaster\EvacuationCenter;
+use App\Models\Disaster\CswdoEvacuationCenter;
 use App\Models\Disaster\EvacuationCenterAssignment;
 use App\Models\Disaster\EvacuationCenterPayoutSession;
 use App\Models\Disaster\PayoutRelease;
@@ -51,12 +52,33 @@ class EvacuationCenterController extends Controller
             'centers' => EvacuationCenter::with(['barangay', 'disaster', 'payoutSessions' => fn ($q) => $q->latest('payout_date')])->withCount('activeAssignments')->orderBy('name')->get(),
             'barangays' => Barangay::where('is_active', true)->orderBy('name')->get(), 'disasters' => Disaster::orderByDesc('incident_date')->get(),
             'officers' => User::where('is_active', true)->orderBy('name')->get(),
+            'centerCatalogData' => CswdoEvacuationCenter::query()->whereNotNull('barangay_id')->orderBy('district')->orderBy('barangay_name')->orderBy('name')->get()->map(fn ($center) => [
+                'id' => $center->id, 'district' => $center->district, 'barangay' => $center->barangay_name,
+                'name' => $center->name, 'street' => $center->street, 'coordinator' => $center->coordinator,
+                'assistant' => $center->assistant_coordinator, 'capacity' => $center->capacity,
+            ])->values(),
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $data = $this->validateCenter($request);
+        $request->validate([
+            'cswdo_catalog_id' => ['required', 'integer', 'exists:cswdo_evacuation_center_catalog,id'],
+            'disaster_id' => ['required', 'exists:disasters,id'],
+            'description' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $catalog = CswdoEvacuationCenter::whereNotNull('barangay_id')->findOrFail($request->integer('cswdo_catalog_id'));
+        if (! $catalog->capacity) {
+            throw ValidationException::withMessages(['cswdo_catalog_id' => 'The selected CSWDO center has no capacity in the official workbook.']);
+        }
+        $data = [
+            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $request->integer('disaster_id'),
+            'barangay_id' => $catalog->barangay_id, 'district' => $catalog->district,
+            'name' => $catalog->name, 'address' => $catalog->street,
+            'contact_person' => $catalog->coordinator, 'assistant_coordinator' => $catalog->assistant_coordinator,
+            'capacity' => $catalog->capacity, 'description' => $request->input('description'),
+            'status' => 'ACTIVE', 'payout_availability' => 'NOT_AVAILABLE',
+        ];
         $center = EvacuationCenter::create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id, 'is_active' => $data['status'] === 'ACTIVE']);
         return response()->json(['success' => true, 'message' => 'Evacuation center created.', 'data' => $center], 201);
     }

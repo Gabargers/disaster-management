@@ -4,6 +4,7 @@ namespace Tests\Feature\Disaster;
 
 use App\Models\Auth\User;
 use App\Models\Disaster\EvacuationCenter;
+use App\Models\Disaster\CswdoEvacuationCenter;
 use App\Models\Disaster\PayoutRelease;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,13 +69,20 @@ class EvacuationCenterPayoutTest extends TestCase
     public function test_authorized_user_can_create_a_center(): void
     {
         $existing = EvacuationCenter::firstOrFail();
+        $catalog = CswdoEvacuationCenter::create([
+            'district' => 'District 1', 'barangay_id' => $existing->barangay_id,
+            'barangay_name' => $existing->barangay->name, 'name' => 'North Test Center',
+            'street' => '101 Test Avenue', 'coordinator' => 'CSWD Coordinator',
+            'assistant_coordinator' => 'CSWD Assistant Coordinator', 'capacity' => 25,
+        ]);
         $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.store'), [
-            'name' => 'North Test Center', 'disaster_id' => $existing->disaster_id,
-            'barangay_id' => $existing->barangay_id, 'address' => '101 Test Avenue',
-            'contact_number' => '09171234568', 'capacity' => 25,
-            'status' => 'ACTIVE', 'payout_availability' => 'NOT_AVAILABLE',
+            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $existing->disaster_id,
         ])->assertCreated();
-        $this->assertDatabaseHas('evacuation_centers', ['name' => 'North Test Center']);
+        $this->assertDatabaseHas('evacuation_centers', [
+            'name' => 'North Test Center', 'address' => '101 Test Avenue',
+            'contact_person' => 'CSWD Coordinator',
+            'assistant_coordinator' => 'CSWD Assistant Coordinator', 'capacity' => 25,
+        ]);
     }
 
     public function test_release_requires_a_photo(): void

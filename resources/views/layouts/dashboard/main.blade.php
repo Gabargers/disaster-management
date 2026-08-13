@@ -6,11 +6,15 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no">
     <title>{{ config('app.name') }}</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700&display=swap" />
     <link rel="stylesheet" href="{{ asset('assets/plugins/global/plugins.bundle.css') }}" type="text/css">
     <link rel="stylesheet" href="{{ asset('assets/css/style.bundle.css') }}" type="text/css">
     <link rel="stylesheet" href="{{ asset('assets/css/header-bg.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/plugins/custom/datatables/datatables.bundle.css') }}">
+    @hasSection('uses_datatables')
+        <link rel="stylesheet" href="{{ asset('assets/plugins/custom/datatables/datatables.bundle.css') }}">
+    @endif
     <link rel="icon" type="image/webp" href="{{ asset('images/CSWDO.webp') }}">
 
     <style>
@@ -82,8 +86,10 @@
 
     <script src="{{ asset('assets/plugins/global/plugins.bundle.js') }}"></script>
     <script src="{{ asset('assets/js/scripts.bundle.js') }}"></script>
-    <script src="{{ asset('assets/plugins/custom/datatables/datatables.bundle.js') }}"></script>
-    <script src="https://kit.fontawesome.com/4f2d7302b1.js" crossorigin="anonymous"></script>
+    @hasSection('uses_datatables')
+        <script src="{{ asset('assets/plugins/custom/datatables/datatables.bundle.js') }}"></script>
+    @endif
+    <script defer src="https://kit.fontawesome.com/4f2d7302b1.js" crossorigin="anonymous"></script>
     @include('components.loading')
     <script src="{{ asset('assets/js/loader/kt-page-loader.js') }}"></script>
 

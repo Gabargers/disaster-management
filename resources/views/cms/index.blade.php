@@ -1,5 +1,7 @@
 @extends('layouts.dashboard.main')
 
+@section('uses_datatables', true)
+
 @section('content')
     @include('components.alert')
 

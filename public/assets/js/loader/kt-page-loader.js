@@ -5,7 +5,10 @@
     if (!el) return;
 
     const dots = document.getElementById("kt_loader_dots");
+    const title = document.getElementById("kt_loader_title");
+    const message = document.getElementById("kt_loader_message");
     let dotsTimer = null;
+    let hideTimer = null;
     let suppressNavigationLoaderUntil = 0;
 
     const startDots = () => {
@@ -24,7 +27,14 @@
         dotsTimer = null;
     };
 
-    const show = () => {
+    const setCopy = (nextTitle, nextMessage) => {
+        if (title) title.textContent = nextTitle || "Preparing your workspace";
+        if (message) message.textContent = nextMessage || "Please wait";
+    };
+
+    const show = (options = {}) => {
+        window.clearTimeout(hideTimer);
+        setCopy(options.title, options.message);
         el.classList.remove("d-none");
         el.style.opacity = "1";
         el.style.display = "flex";
@@ -33,9 +43,10 @@
 
     const hide = () => {
         el.style.opacity = "0";
-        setTimeout(() => {
+        hideTimer = window.setTimeout(() => {
             el.classList.add("d-none");
             el.style.display = "none";
+            setCopy();
         }, 380);
         stopDots();
     };
@@ -97,13 +108,34 @@
         }
 
         if (shouldShowForLink(link, event)) {
-            show();
+            show({ title: "Opening page", message: "Loading your requested content" });
         }
+    });
+
+    document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.hasAttribute("data-no-page-loader")) return;
+        if (!form.checkValidity()) return;
+
+        window.setTimeout(() => {
+            if (event.defaultPrevented) return;
+
+            const submitter = event.submitter;
+            if (submitter) {
+                submitter.setAttribute("aria-disabled", "true");
+                submitter.classList.add("disabled");
+            }
+
+            show({
+                title: form.dataset.loaderTitle || "Processing request",
+                message: form.dataset.loaderMessage || "Saving your changes securely",
+            });
+        });
     });
 
     window.addEventListener("beforeunload", () => {
         if (shouldSuppressNavigationLoader()) return;
-        show();
+        show({ title: "Almost there", message: "Completing navigation" });
     });
 
     window.addEventListener("pagehide", () => {
@@ -114,4 +146,6 @@
     window.addEventListener("pageshow", (e) => {
         if (e.persisted) hide();
     });
+
+    window.PageLoader = { show, hide, setCopy };
 })();

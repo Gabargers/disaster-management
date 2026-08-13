@@ -51,6 +51,8 @@ Route::middleware(['auth', 'active'])->group(function () {
             ->middleware('permission:manage tciss masterlist')->name('person-affecteds.index');
         Route::get('/tciss-person-affecteds/{personAffected}', [PersonAffectedController::class, 'show'])
             ->middleware('permission:manage tciss masterlist')->name('person-affecteds.show');
+        Route::post('/tciss-person-affecteds/{personAffected}/evacuation-center', [PersonAffectedController::class, 'assignEvacuationCenter'])
+            ->middleware(['permission:manage tciss masterlist', 'permission:evacuation_center.assign_family'])->name('person-affecteds.assign-evacuation-center');
         Route::get('/tciss-masterlist/{record}/full-details', [TcissMasterlistController::class, 'fullDetails'])->middleware('permission:manage tciss masterlist')->name('tciss.full-details');
         Route::patch('/tciss-masterlist/{record}/verify', [TcissMasterlistController::class, 'verify'])
             ->middleware('permission:manage tciss masterlist')->name('tciss.verify');
