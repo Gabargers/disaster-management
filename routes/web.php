@@ -84,6 +84,8 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::put('/payouts/evacuation-centers/{center}', 'update')->name('payouts.centers.update');
             Route::get('/payouts/evacuation-centers/{center}', 'show')->name('payouts.centers.show');
             Route::get('/payouts/evacuation-centers/{center}/families', 'families')->name('payouts.centers.families');
+            Route::get('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/payout-details', 'personAffectedDetails')->name('payouts.centers.tciss-families.details');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/housing-condition', 'updatePersonAffectedConditions')->name('payouts.centers.tciss-families.conditions');
             Route::get('/payouts/evacuation-centers/{center}/families/{family}/payout-details', 'payoutDetails')->name('payouts.centers.families.payout-details');
             Route::patch('/payouts/evacuation-centers/{center}/families/{family}/housing-condition', 'updateHousingCondition')->name('payouts.centers.families.housing-condition');
             Route::get('/payouts/releases/{release}/photo', 'photo')->name('payouts.releases.photo');

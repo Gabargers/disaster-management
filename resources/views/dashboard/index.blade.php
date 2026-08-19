@@ -3,11 +3,11 @@
 @section('content')
 @php
     $mainCards = [
-        ['TOTAL', 'Affected Families', 'All registered households', 'ki-people', 'primary', route('disaster.reports.index')],
+        ['FAMILY_AFFECTED', 'Family Affected', 'TCISS families received and ready for assignment', 'ki-people', 'primary', route('disaster.person-affecteds.index')],
         ['VALIDATION_PENDING', 'For Validation', 'DAFAC households awaiting validation', 'ki-shield-tick', 'warning', route('disaster.payouts.index')],
         ['PAYOUT_SCHEDULED', 'Scheduled Payouts', 'Households scheduled for release', 'ki-calendar-8', 'info', route('disaster.payouts.index')],
         ['RELEASED_PAYOUTS', 'Released Payouts', 'Households that received assistance', 'ki-dollar', 'success', route('disaster.payroll.index')],
-        ['ASSIGNED_EVACUEES', 'Assigned Evacuees', ($metrics['ACTIVE_EVACUATION_CENTERS'] ?? 0).' active evacuation centers', 'ki-geolocation', 'danger', route('disaster.person-affecteds.index')],
+        ['ASSIGNED_FAMILIES', 'Assigned Families', ($metrics['ACTIVE_EVACUATION_CENTERS'] ?? 0).' active evacuation centers', 'ki-geolocation', 'danger', route('disaster.payouts.index')],
     ];
     $attentionCards = [
         ['VALIDATION_PENDING', 'For validation', 'warning', route('disaster.payouts.index')],
@@ -16,8 +16,8 @@
         ['REQUIREMENTS_PENDING', 'Missing requirements', 'warning', route('disaster.payroll.index')],
     ];
     $stages = [
-        ['Families', 'TOTAL', 'ki-people', route('disaster.reports.index')],
-        ['Evacuation', 'ASSIGNED_EVACUEES', 'ki-geolocation', route('disaster.person-affecteds.index')],
+        ['Family Affected', 'FAMILY_AFFECTED', 'ki-people', route('disaster.person-affecteds.index')],
+        ['Assigned Families', 'ASSIGNED_FAMILIES', 'ki-geolocation', route('disaster.payouts.index')],
         ['For Validation', 'VALIDATION_PENDING', 'ki-shield-tick', route('disaster.payouts.index')],
         ['Validated', 'VALIDATED', 'ki-check-circle', route('disaster.payouts.index')],
         ['Payout Pending', 'PAYOUT_PENDING', 'ki-time', route('disaster.payouts.index')],
@@ -69,7 +69,7 @@
 
 <div class="dashboard-metrics-grid mb-7">
     @foreach($mainCards as [$key, $label, $description, $icon, $tone, $url])
-        <a href="{{ $url }}{{ in_array($key, ['TOTAL', 'ASSIGNED_EVACUEES'], true) ? '' : '?status='.$key }}" class="card metric-card metric-card-{{ $tone }} card-flush shadow-sm h-100">
+        <a href="{{ $url }}{{ in_array($key, ['FAMILY_AFFECTED', 'ASSIGNED_FAMILIES'], true) ? '' : '?status='.$key }}" class="card metric-card metric-card-{{ $tone }} card-flush shadow-sm h-100">
             <div class="card-body">
                 <div class="metric-card-top">
                     <div class="metric-icon bg-light-{{ $tone }}"><i class="ki-duotone {{ $icon }} fs-2x text-{{ $tone }}"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
@@ -90,7 +90,7 @@
             <div class="card-body pt-5">
                 <div class="workflow-track">
                     @foreach($stages as [$label, $key, $icon, $url])
-                        <a href="{{ $url }}{{ in_array($key, ['TOTAL','RELEASED_PAYOUTS','ASSIGNED_EVACUEES'], true) ? '' : '?status='.$key }}" class="workflow-stage text-center">
+                        <a href="{{ $url }}{{ in_array($key, ['FAMILY_AFFECTED','RELEASED_PAYOUTS','ASSIGNED_FAMILIES'], true) ? '' : '?status='.$key }}" class="workflow-stage text-center">
                             <div class="workflow-icon mx-auto"><i class="ki-duotone {{ $icon }} fs-2x"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
                             <div class="workflow-count">{{ number_format($metrics[$key] ?? 0) }}</div>
                             <div class="workflow-label">{{ $label }}</div>

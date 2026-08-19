@@ -37,4 +37,5 @@ class EvacuationCenter extends Model
     public function payoutSessions(): HasMany { return $this->hasMany(EvacuationCenterPayoutSession::class); }
     public function payoutReleases(): HasMany { return $this->hasMany(PayoutRelease::class); }
     public function personAffecteds(): HasMany { return $this->hasMany(PersonAffected::class); }
+    public function unlinkedPersonAffecteds(): HasMany { return $this->personAffecteds()->whereNull('affected_family_id'); }
 }
