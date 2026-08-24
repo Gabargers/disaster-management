@@ -85,12 +85,21 @@ class PersonAffectedPageTest extends TestCase
 
         $this->actingAs($user)->get(route('disaster.person-affecteds.index', ['search' => 'MARIA FAMILY MEMBER']))
             ->assertOk()
-            ->assertSee('FAMILY-A1')
+            ->assertSee('FAMILY-A2')
+            ->assertSee('MARIA FAMILY MEMBER')
             ->assertSee('JUAN FAMILY HEAD')
-            ->assertDontSee('FAMILY-A2');
+            ->assertSee('Family head:');
 
         $this->actingAs($user)->getJson(route('disaster.person-affecteds.show', $head))
             ->assertOk()
+            ->assertJsonPath('data.family_members.0.control_number', 'FAMILY-A2');
+
+        $this->actingAs($user)->getJson(route('disaster.person-affecteds.show', [
+            $head, 'member_control_number' => 'FAMILY-A2',
+        ]))->assertOk()
+            ->assertJsonPath('data.control_number', 'FAMILY-A1')
+            ->assertJsonPath('data.full_name', 'JUAN FAMILY HEAD')
+            ->assertJsonCount(1, 'data.family_members')
             ->assertJsonPath('data.family_members.0.control_number', 'FAMILY-A2');
     }
 

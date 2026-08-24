@@ -70,8 +70,68 @@ class PersonAffectedSampleSeeder extends Seeder
                 }
             }
 
+            $bauchFamily = [
+                ['CN-0001-00D3', 'Bauch, Alejandra Volkman', '1998-07-12', 28, 'Female', 'Daughter'],
+                ['CN-0001-00D2', 'Bauch, Billy', '1995-11-24', 30, 'Male', 'Son'],
+                ['CN-0001-00D1', 'Bauch, Clare Rodriguez', '1970-04-09', 56, 'Female', 'Family Head'],
+            ];
+
+            foreach ($bauchFamily as [$controlNumber, $name, $birthdate, $age, $sex, $relationship]) {
+                $person = PersonAffected::updateOrCreate(
+                    ['control_number' => $controlNumber],
+                    [
+                        'affected_family_id' => null,
+                        'full_name' => $name,
+                        'birthdate' => $birthdate,
+                        'age' => $age,
+                        'sex' => $sex,
+                        'code' => null,
+                        'occupation' => $relationship === 'Family Head' ? 'Store Owner' : null,
+                        'monthly_income' => null,
+                        'health_condition' => null,
+                        'district' => 'District 1',
+                        'barangay' => 'TUTUKAN',
+                        'street' => '905 CAMRON PLACE',
+                        'city' => 'TAGUIG CITY',
+                        'family_head_name' => 'Bauch, Clare Rodriguez',
+                        'family_head_control_number' => 'CN-0001-00D1',
+                        'relationship' => $relationship,
+                        'housing' => 'Owner',
+                        'housing_condition' => null,
+                        'evacuation_center_id' => null,
+                        'evacuation_center_assigned_by' => null,
+                        'evacuation_center_assigned_at' => null,
+                    ]
+                );
+
+                $person->statuses()->updateOrCreate(
+                    ['date_tagged' => '2026-08-19 09:00:00.000000'],
+                    ['status' => 'affected']
+                );
+
+                $memberControlNumbers = collect($bauchFamily)->pluck(0)->reject(fn ($number) => $number === $controlNumber);
+                $person->familyMembers()->whereNotIn('control_number', $memberControlNumbers)->delete();
+                foreach ($bauchFamily as [$memberControlNumber, $memberName, , $memberAge, $memberSex, $memberRelationship]) {
+                    if ($memberControlNumber === $controlNumber) {
+                        continue;
+                    }
+
+                    $person->familyMembers()->updateOrCreate(
+                        ['control_number' => $memberControlNumber],
+                        [
+                            'full_name' => $memberName,
+                            'relationship' => $memberRelationship,
+                            'age' => $memberAge,
+                            'sex' => $memberSex,
+                            'code' => null,
+                            'housing' => 'Owner',
+                        ]
+                    );
+                }
+            }
+
         });
 
-        $this->command?->info('Drio A1-A7 Family Affected records are ready.');
+        $this->command?->info('Drio A1-A7 and Bauch D1-D3 Family Affected records are ready.');
     }
 }

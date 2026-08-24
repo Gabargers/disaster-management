@@ -18,7 +18,7 @@ class PersonAffectedController extends Controller
         $status = trim((string) $request->query('status'));
 
         $families = PersonAffected::query()
-            ->with(['latestStatus', 'evacuationCenter'])
+            ->with(['latestStatus', 'evacuationCenter', 'familyMembers'])
             ->withCount(['statuses', 'familyMembers'])
             ->familyHeads()
             ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
@@ -50,6 +50,22 @@ class PersonAffectedController extends Controller
         $totalFamilies = (clone $families)->reorder()->count();
         $people = $families->paginate(15)->withQueryString();
 
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+            $people->getCollection()->each(function (PersonAffected $person) use ($needle) {
+                $headMatches = str_contains(mb_strtolower((string) $person->control_number), $needle)
+                    || str_contains(mb_strtolower((string) $person->full_name), $needle);
+
+                if (! $headMatches) {
+                    $matchedMember = $person->familyMembers->first(fn ($member) =>
+                        str_contains(mb_strtolower((string) $member->control_number), $needle)
+                        || str_contains(mb_strtolower((string) $member->full_name), $needle)
+                    );
+                    $person->setAttribute('matched_family_member', $matchedMember);
+                }
+            });
+        }
+
         return view('disaster.person-affecteds', [
             'page_title' => 'TCISS Family Affected',
             'page_description' => 'Families received from the TCISS API integration.',
@@ -64,6 +80,10 @@ class PersonAffectedController extends Controller
     public function show(PersonAffected $personAffected): JsonResponse
     {
         $personAffected->load(['latestStatus', 'statuses' => fn ($query) => $query->latest('date_tagged'), 'familyMembers', 'evacuationCenter.barangay', 'evacuationCenterAssigner']);
+        $requestedMemberControl = trim((string) request()->query('member_control_number'));
+        $familyMembers = $requestedMemberControl !== ''
+            ? $personAffected->familyMembers->where('control_number', $requestedMemberControl)->values()
+            : $personAffected->familyMembers;
         $centers = EvacuationCenter::query()->with('barangay')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])
             ->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get();
 
@@ -98,7 +118,7 @@ class PersonAffectedController extends Controller
                     'is_full' => ($center->active_assignments_count + $center->unlinked_person_affecteds_count) >= $center->capacity,
                 ])->values(),
             ],
-            'family_members' => $personAffected->familyMembers->map(fn ($member) => [
+            'family_members' => $familyMembers->map(fn ($member) => [
                 'control_number' => $member->control_number, 'full_name' => $member->full_name,
                 'relationship' => $member->relationship, 'age' => $member->age, 'sex' => $member->sex,
                 'code' => $member->code, 'housing' => $member->housing,
