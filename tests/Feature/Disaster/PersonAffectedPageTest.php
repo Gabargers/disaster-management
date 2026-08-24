@@ -182,6 +182,7 @@ class PersonAffectedPageTest extends TestCase
             ->assertSee('1 active evacuation centers');
         $this->assertSame(1, $dashboard->viewData('metrics')['ASSIGNED_FAMILIES']);
         $this->assertSame(1, $dashboard->viewData('metrics')['FAMILY_AFFECTED']);
+        $this->assertSame(1, $dashboard->viewData('metrics')['PERSON_AFFECTED']);
         $this->assertSame(1, $dashboard->viewData('metrics')['ACTIVE_EVACUATION_CENTERS']);
     }
 }

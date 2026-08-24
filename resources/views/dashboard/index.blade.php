@@ -4,8 +4,8 @@
 @php
     $mainCards = [
         ['FAMILY_AFFECTED', 'Family Affected', 'TCISS families received and ready for assignment', 'ki-people', 'primary', route('disaster.person-affecteds.index')],
+        ['PERSON_AFFECTED', 'Person Affected', 'Total affected individuals received from TCISS', 'ki-profile-user', 'info', route('disaster.person-affecteds.index')],
         ['VALIDATION_PENDING', 'For Validation', 'DAFAC households awaiting validation', 'ki-shield-tick', 'warning', route('disaster.payouts.index')],
-        ['PAYOUT_SCHEDULED', 'Scheduled Payouts', 'Households scheduled for release', 'ki-calendar-8', 'info', route('disaster.payouts.index')],
         ['RELEASED_PAYOUTS', 'Released Payouts', 'Households that received assistance', 'ki-dollar', 'success', route('disaster.payroll.index')],
         ['ASSIGNED_FAMILIES', 'Assigned Families', ($metrics['ACTIVE_EVACUATION_CENTERS'] ?? 0).' active evacuation centers', 'ki-geolocation', 'danger', route('disaster.payouts.index')],
     ];
@@ -69,7 +69,7 @@
 
 <div class="dashboard-metrics-grid mb-7">
     @foreach($mainCards as [$key, $label, $description, $icon, $tone, $url])
-        <a href="{{ $url }}{{ in_array($key, ['FAMILY_AFFECTED', 'ASSIGNED_FAMILIES'], true) ? '' : '?status='.$key }}" class="card metric-card metric-card-{{ $tone }} card-flush shadow-sm h-100">
+        <a href="{{ $url }}{{ in_array($key, ['FAMILY_AFFECTED', 'PERSON_AFFECTED', 'ASSIGNED_FAMILIES'], true) ? '' : '?status='.$key }}" class="card metric-card metric-card-{{ $tone }} card-flush shadow-sm h-100">
             <div class="card-body">
                 <div class="metric-card-top">
                     <div class="metric-icon bg-light-{{ $tone }}"><i class="ki-duotone {{ $icon }} fs-2x text-{{ $tone }}"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i></div>
