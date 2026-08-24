@@ -50,7 +50,8 @@ class EvacuationCenterController extends Controller
     {
         return view('disaster.payouts', [
             'page_title' => 'Evacuation Center', 'page_description' => 'Manage evacuation centers, beneficiaries, and payout releases.',
-            'centers' => EvacuationCenter::with(['barangay', 'disaster', 'payoutSessions' => fn ($q) => $q->latest('payout_date')])->withCount('activeAssignments')->orderBy('name')->get(),
+            'centers' => EvacuationCenter::with(['barangay', 'disaster', 'payoutSessions' => fn ($q) => $q->latest('payout_date')])
+                ->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])->orderBy('name')->get(),
             'barangays' => Barangay::where('is_active', true)->orderBy('name')->get(), 'disasters' => Disaster::orderByDesc('incident_date')->get(),
             'officers' => User::where('is_active', true)->orderBy('name')->get(),
             'centerCatalogData' => CswdoEvacuationCenter::query()->whereNotNull('barangay_id')->orderBy('district')->orderBy('barangay_name')->orderBy('name')->get()->map(fn ($center) => [

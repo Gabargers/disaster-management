@@ -132,8 +132,16 @@ class PersonAffectedController extends Controller
             'evacuation_center_assigned_at' => now(),
         ]);
 
+        $center->loadCount(['activeAssignments', 'unlinkedPersonAffecteds']);
+
         return response()->json(['success' => true, 'message' => 'Evacuation center assigned successfully.', 'data' => [
-            'center' => ['id' => $center->id, 'name' => $center->name],
+            'person_affected_id' => $personAffected->id,
+            'center' => [
+                'id' => $center->id,
+                'name' => $center->name,
+                'families_count' => $center->active_assignments_count + $center->unlinked_person_affecteds_count,
+            ],
+            'assigned_families_count' => PersonAffected::familyHeads()->whereNotNull('evacuation_center_id')->count(),
         ]]);
     }
 }

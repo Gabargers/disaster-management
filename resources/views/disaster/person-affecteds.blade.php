@@ -3,7 +3,7 @@
 @section('content')
 <div class="row g-5 mb-8">
     @foreach([['Families received',$totalPeople,'primary','profile-user'],['Assigned families',$totalAssigned,'success','abstract-26'],['Latest API update',$latestReceivedAt ? \Illuminate\Support\Carbon::parse($latestReceivedAt)->format('M d, Y h:i A') : 'No data yet','warning','time']] as [$label,$value,$color,$icon])
-    <div class="col-md-4"><div class="card card-flush h-100 shadow-sm"><div class="card-body d-flex align-items-center gap-5"><span class="symbol symbol-55px"><span class="symbol-label bg-light-{{$color}}"><i class="ki-duotone ki-{{$icon}} fs-2x text-{{$color}}"><span class="path1"></span><span class="path2"></span><span class="path3"></span><span class="path4"></span></i></span></span><div><div class="fs-{{is_numeric($value)?'2':'6'}} fw-bold text-gray-900">{{is_numeric($value)?number_format($value):$value}}</div><div class="text-muted fw-semibold">{{$label}}</div></div></div></div></div>
+    <div class="col-md-4"><div class="card card-flush h-100 shadow-sm"><div class="card-body d-flex align-items-center gap-5"><span class="symbol symbol-55px"><span class="symbol-label bg-light-{{$color}}"><i class="ki-duotone ki-{{$icon}} fs-2x text-{{$color}}"><span class="path1"></span><span class="path2"></span><span class="path3"></span><span class="path4"></span></i></span></span><div><div @if($label === 'Assigned families') id="assigned-families-count" @endif class="fs-{{is_numeric($value)?'2':'6'}} fw-bold text-gray-900">{{is_numeric($value)?number_format($value):$value}}</div><div class="text-muted fw-semibold">{{$label}}</div></div></div></div></div>
     @endforeach
 </div>
 
@@ -12,7 +12,7 @@
     <div class="card-body pt-0">
         <form method="GET" class="row g-4 mb-8 align-items-end"><div class="col-md-6"><label class="form-label">Family member name or control number</label><input type="search" name="search" value="{{request('search')}}" class="form-control form-control-solid" placeholder="Search family head or member"></div><div class="col-md-3"><label class="form-label">Latest status</label><select name="status" class="form-select form-select-solid"><option value="">All statuses</option>@foreach($statuses as $option)<option value="{{$option}}" @selected(request('status')===$option)>{{Str::headline($option)}}</option>@endforeach</select></div><div class="col-md-3 d-flex gap-2"><button class="btn btn-primary flex-grow-1">Filter</button>@if(request()->query())<a href="{{route('disaster.person-affecteds.index')}}" class="btn btn-light">Clear</a>@endif</div></form>
         <div class="table-responsive"><table class="table align-middle table-row-dashed gy-5"><thead><tr class="text-gray-600 fw-bold fs-7 text-uppercase"><th>Control Number</th><th>Family Head</th><th>Barangay</th><th>Street</th><th>Status</th><th class="text-end">Action</th></tr></thead><tbody>
-        @forelse($people as $person)<tr><td><span class="text-primary fw-semibold">{{$person->control_number}}</span></td><td><span class="fw-bold text-gray-900">{{$person->full_name ?: '—'}}</span></td><td>{{$person->barangay ?: '—'}}</td><td>{{$person->street ?: '—'}}</td><td>@if($person->evacuation_center_id)<span class="badge badge-light-success" title="{{$person->evacuationCenter?->name}}">Assigned to Evacuation Center</span>@else<span class="badge badge-light-danger">{{Str::headline($person->latestStatus?->status ?? 'Unknown')}}</span>@endif</td><td class="text-end">@if($person->evacuation_center_id)<button type="button" class="btn btn-sm btn-light-secondary" disabled title="Manage this family from {{$person->evacuationCenter?->name ?? 'the assigned evacuation center'}}">Details</button>@else<button type="button" class="btn btn-sm btn-light-primary js-person-details" data-bs-toggle="modal" data-bs-target="#residentModal" data-url="{{route('disaster.person-affecteds.show',$person)}}">Details</button>@endif</td></tr>
+        @forelse($people as $person)<tr data-person-id="{{$person->id}}"><td><span class="text-primary fw-semibold">{{$person->control_number}}</span></td><td><span class="fw-bold text-gray-900">{{$person->full_name ?: '—'}}</span></td><td>{{$person->barangay ?: '—'}}</td><td>{{$person->street ?: '—'}}</td><td class="js-assignment-status">@if($person->evacuation_center_id)<span class="badge badge-light-success" title="{{$person->evacuationCenter?->name}}">Assigned to Evacuation Center</span>@else<span class="badge badge-light-danger">{{Str::headline($person->latestStatus?->status ?? 'Unknown')}}</span>@endif</td><td class="text-end js-details-action">@if($person->evacuation_center_id)<button type="button" class="btn btn-sm btn-light-secondary" disabled title="Manage this family from {{$person->evacuationCenter?->name ?? 'the assigned evacuation center'}}">Details</button>@else<button type="button" class="btn btn-sm btn-light-primary js-person-details" data-bs-toggle="modal" data-bs-target="#residentModal" data-url="{{route('disaster.person-affecteds.show',$person)}}">Details</button>@endif</td></tr>
         @empty<tr><td colspan="6"><div class="text-center py-15"><i class="ki-duotone ki-profile-user fs-3x text-muted"><span class="path1"></span><span class="path2"></span></i><h4 class="mt-4">No family affected records found</h4><p class="text-muted">Records sent by the TCISS API will appear here automatically.</p></div></td></tr>@endforelse
         </tbody></table></div><div class="d-flex justify-content-end mt-5">{{$people->links()}}</div>
     </div>
@@ -149,13 +149,23 @@ document.getElementById('person-center-form').addEventListener('submit', async e
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || Object.values(result.errors || {}).flat().join(' '));
-        document.getElementById('current-center').textContent = `Currently assigned to ${result.data.center.name}`;
-        message.className = 'alert alert-success';
-        message.textContent = result.message;
+        const row = document.querySelector(`tr[data-person-id="${result.data.person_affected_id}"]`);
+        if (row) {
+            row.querySelector('.js-assignment-status').innerHTML = `<span class="badge badge-light-success" title="${result.data.center.name}">Assigned to Evacuation Center</span>`;
+            row.querySelector('.js-details-action').innerHTML = `<button type="button" class="btn btn-sm btn-light-secondary" disabled title="Manage this family from ${result.data.center.name}">Details</button>`;
+        }
+        const assignedCount = document.getElementById('assigned-families-count');
+        if (assignedCount) assignedCount.textContent = Number(result.data.assigned_families_count).toLocaleString();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('residentModal')).hide();
+        await Swal.fire({
+            text: `${result.message} ${result.data.center.families_count} ${result.data.center.families_count === 1 ? 'family is' : 'families are'} now assigned to ${result.data.center.name}.`,
+            icon: 'success',
+            timer: 1800,
+            showConfirmButton: false,
+        });
     } catch (error) {
         message.className = 'alert alert-danger';
         message.textContent = error.message;
-    } finally {
         button.disabled = false;
     }
 });

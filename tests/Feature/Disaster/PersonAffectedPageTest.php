@@ -121,7 +121,10 @@ class PersonAffectedPageTest extends TestCase
 
         $this->actingAs($user)->postJson(route('disaster.person-affecteds.assign-evacuation-center', $person), [
             'evacuation_center_id' => $center->id,
-        ])->assertOk()->assertJsonPath('data.center.name', 'Assignment Center');
+        ])->assertOk()
+            ->assertJsonPath('data.center.name', 'Assignment Center')
+            ->assertJsonPath('data.center.families_count', 1)
+            ->assertJsonPath('data.assigned_families_count', 1);
 
         $this->assertDatabaseHas('person_affecteds', [
             'id' => $person->id, 'evacuation_center_id' => $center->id,
@@ -129,6 +132,9 @@ class PersonAffectedPageTest extends TestCase
         ]);
 
         $user->givePermissionTo('manage payout schedules');
+        $centerList = $this->actingAs($user)->get(route('disaster.payouts.index'))->assertOk();
+        $this->assertSame(1, $centerList->viewData('centers')->first()->unlinked_person_affecteds_count);
+
         $this->actingAs($user)
             ->getJson(route('disaster.payouts.centers.families', $center))
             ->assertOk()
