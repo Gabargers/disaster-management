@@ -84,9 +84,15 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::put('/payouts/evacuation-centers/{center}', 'update')->name('payouts.centers.update');
             Route::get('/payouts/evacuation-centers/{center}', 'show')->name('payouts.centers.show');
             Route::get('/payouts/evacuation-centers/{center}/families', 'families')->name('payouts.centers.families');
+            Route::get('/payouts/evacuation-centers/{center}/families/export', 'exportFamilies')->name('payouts.centers.families.export');
+            Route::post('/payouts/evacuation-centers/{center}/bfp-certificate', 'uploadBfpCertificate')->name('payouts.centers.bfp-certificate');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/transfer', 'reassignFamily')->middleware('role:admin|superadmin')->name('payouts.centers.families.transfer');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/transfer', 'reassignPersonAffected')->middleware('role:admin|superadmin')->name('payouts.centers.tciss-families.transfer');
             Route::get('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/payout-details', 'personAffectedDetails')->name('payouts.centers.tciss-families.details');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/members/{member}/remarks', 'updatePersonAffectedMemberRemarks')->name('payouts.centers.tciss-families.members.remarks');
             Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/housing-condition', 'updatePersonAffectedConditions')->name('payouts.centers.tciss-families.conditions');
             Route::get('/payouts/evacuation-centers/{center}/families/{family}/payout-details', 'payoutDetails')->name('payouts.centers.families.payout-details');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/members/{member}/remarks', 'updateFamilyMemberRemarks')->name('payouts.centers.families.members.remarks');
             Route::patch('/payouts/evacuation-centers/{center}/families/{family}/housing-condition', 'updateHousingCondition')->name('payouts.centers.families.housing-condition');
             Route::get('/payouts/releases/{release}/photo', 'photo')->name('payouts.releases.photo');
             Route::get('/payouts/evacuation-centers/{center}/available-families', 'availableFamilies')->name('payouts.centers.available-families');
@@ -98,6 +104,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::get('/post-payout-requirements', [DisasterWorkflowController::class, 'requirements'])->middleware('permission:manage post payout requirements')->name('requirements.index');
         Route::post('/post-payout-requirements/{requirement}', [DisasterWorkflowController::class, 'verifyRequirements'])->middleware('permission:manage post payout requirements')->name('requirements.verify');
+        Route::get('/reports/export', [DisasterWorkflowController::class, 'exportReport'])->middleware('permission:view disaster reports')->name('reports.export');
         Route::get('/reports', [DisasterWorkflowController::class, 'reports'])->middleware('permission:view disaster reports')->name('reports.index');
     });
 

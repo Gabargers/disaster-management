@@ -105,7 +105,7 @@ class TcissMasterlistController extends Controller
                 'name' => $member->name, 'birthdate' => $member->birthdate?->format('Y-m-d'),
                 'age' => $member->birthdate?->age, 'relationship' => $member->relationship_to_head,
                 'sex' => $member->sex, 'occupation' => $member->occupation, 'monthly_income' => $member->monthly_income,
-                'health_condition' => $member->health_condition, 'remarks_code' => $member->remarks_codes,
+                'health_condition' => $member->health_condition, 'remarks_code' => $member->remarks_codes, 'remarks_label' => $member->remarks_label,
             ])->values() ?? [],
             'validation' => $validation ? [
                 'status' => $validation->status, 'house_ownership' => $validation->validated_house_ownership,

@@ -37,7 +37,7 @@
                     $canCms = $canBarangay && $barangayRoute;
                     $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
                     $disasterModules = [
-                        ['route' => 'disaster.person-affecteds.index', 'label' => 'Family Affected', 'icon' => 'ki-profile-user', 'permission' => 'manage tciss masterlist'],
+                        ['route' => 'disaster.person-affecteds.index', 'label' => 'Affected Families', 'icon' => 'ki-profile-user', 'permission' => 'manage tciss masterlist'],
                         ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar', 'permission' => 'prepare payroll list'],
                         ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation', 'permission' => 'manage payout schedules'],
                         ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document', 'permission' => 'view disaster reports'],

@@ -32,7 +32,7 @@ class PersonAffectedPageTest extends TestCase
         $this->actingAs($user)
             ->get(route('disaster.person-affecteds.index'))
             ->assertOk()
-            ->assertSee('Family Affected')
+            ->assertSee('Affected Families')
             ->assertSee('TCISS-CN-10001')
             ->assertSee('Juan Dela Cruz')
             ->assertSee('Central Signal')

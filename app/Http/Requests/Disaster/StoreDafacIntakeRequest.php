@@ -48,7 +48,7 @@ class StoreDafacIntakeRequest extends FormRequest
             'family_members.*.occupation' => ['nullable', 'string', 'max:255'],
             'family_members.*.monthly_income' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'family_members.*.health_condition' => ['nullable', Rule::in(['Dead', 'Injured', 'Missing', 'With Illness'])],
-            'family_members.*.remarks_code' => ['nullable', Rule::in(['A', 'B', 'C', 'D', 'E', 'F'])],
+            'family_members.*.remarks_code' => ['nullable', Rule::in(['ELDERLY', 'PWD', 'PREG', 'LM', 'SP', '4PS', 'A', 'B', 'C', 'D', 'E', 'F'])],
         ];
     }
 }

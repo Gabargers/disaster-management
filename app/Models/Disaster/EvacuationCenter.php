@@ -7,6 +7,7 @@ use App\Models\Disaster\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use App\Models\Integration\PersonAffected;
 
 class EvacuationCenter extends Model
@@ -38,4 +39,5 @@ class EvacuationCenter extends Model
     public function payoutReleases(): HasMany { return $this->hasMany(PayoutRelease::class); }
     public function personAffecteds(): HasMany { return $this->hasMany(PersonAffected::class); }
     public function unlinkedPersonAffecteds(): HasMany { return $this->personAffecteds()->whereNull('affected_family_id'); }
+    public function documents(): MorphMany { return $this->morphMany(UploadedDocument::class, 'documentable'); }
 }

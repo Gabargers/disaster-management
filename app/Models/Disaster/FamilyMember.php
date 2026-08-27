@@ -6,6 +6,7 @@ use App\Models\Disaster\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use App\Support\MemberRemark;
 
 class FamilyMember extends Model
 {
@@ -42,5 +43,10 @@ class FamilyMember extends Model
     public function affectedFamily(): BelongsTo
     {
         return $this->belongsTo(AffectedFamily::class);
+    }
+
+    public function getRemarksLabelAttribute(): string
+    {
+        return MemberRemark::label($this->remarks_codes);
     }
 }

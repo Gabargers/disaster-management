@@ -3,8 +3,8 @@
 @section('content')
 @php
     $mainCards = [
-        ['FAMILY_AFFECTED', 'Family Affected', 'TCISS families received and ready for assignment', 'ki-people', 'primary', route('disaster.person-affecteds.index')],
-        ['PERSON_AFFECTED', 'Person Affected', 'Total affected individuals received from TCISS', 'ki-profile-user', 'info', route('disaster.person-affecteds.index')],
+        ['FAMILY_AFFECTED', 'Affected Families', 'TCISS families received and ready for assignment', 'ki-people', 'primary', route('disaster.person-affecteds.index')],
+        ['PERSON_AFFECTED', 'Individually Affected', 'Total affected individuals received from TCISS', 'ki-profile-user', 'info', route('disaster.person-affecteds.index')],
         ['VALIDATION_PENDING', 'For Validation', 'DAFAC households awaiting validation', 'ki-shield-tick', 'warning', route('disaster.payouts.index')],
         ['RELEASED_PAYOUTS', 'Released Payouts', 'Households that received assistance', 'ki-dollar', 'success', route('disaster.payroll.index')],
         ['ASSIGNED_FAMILIES', 'Assigned Families', ($metrics['ACTIVE_EVACUATION_CENTERS'] ?? 0).' active evacuation centers', 'ki-geolocation', 'danger', route('disaster.payouts.index')],
@@ -16,7 +16,7 @@
         ['REQUIREMENTS_PENDING', 'Missing requirements', 'warning', route('disaster.payroll.index')],
     ];
     $stages = [
-        ['Family Affected', 'FAMILY_AFFECTED', 'ki-people', route('disaster.person-affecteds.index')],
+        ['Affected Families', 'FAMILY_AFFECTED', 'ki-people', route('disaster.person-affecteds.index')],
         ['Assigned Families', 'ASSIGNED_FAMILIES', 'ki-geolocation', route('disaster.payouts.index')],
         ['For Validation', 'VALIDATION_PENDING', 'ki-shield-tick', route('disaster.payouts.index')],
         ['Validated', 'VALIDATED', 'ki-check-circle', route('disaster.payouts.index')],
@@ -40,30 +40,6 @@
                 Open Evacuation Centers
             </a>
         @endcan
-    </div>
-</div>
-
-<div class="card card-flush shadow-sm mb-7">
-    <div class="card-body py-5">
-        <form method="get" class="row g-3 align-items-end">
-            <div class="col-12 col-md-6 col-xl-3">
-                <label class="form-label fs-7 fw-bold text-muted">DISASTER</label>
-                <select name="disaster_id" class="form-select form-select-solid">
-                    <option value="">All disasters</option>
-                    @foreach($disasters as $item)<option value="{{ $item->id }}" @selected(request('disaster_id') == $item->id)>{{ $item->name }}</option>@endforeach
-                </select>
-            </div>
-            <div class="col-12 col-md-6 col-xl-3">
-                <label class="form-label fs-7 fw-bold text-muted">BARANGAY</label>
-                <select name="barangay_id" class="form-select form-select-solid">
-                    <option value="">All barangays</option>
-                    @foreach($barangays as $item)<option value="{{ $item->id }}" @selected(request('barangay_id') == $item->id)>{{ $item->name }}</option>@endforeach
-                </select>
-            </div>
-            <div class="col-6 col-md-4 col-xl-2"><label class="form-label fs-7 fw-bold text-muted">FROM</label><input name="date_from" value="{{ request('date_from') }}" type="date" class="form-control form-control-solid"></div>
-            <div class="col-6 col-md-4 col-xl-2"><label class="form-label fs-7 fw-bold text-muted">TO</label><input name="date_to" value="{{ request('date_to') }}" type="date" class="form-control form-control-solid"></div>
-            <div class="col-12 col-md-4 col-xl-2 d-flex gap-2"><button class="btn btn-primary flex-grow-1">Apply</button>@if(request()->hasAny(['disaster_id','barangay_id','date_from','date_to']))<a href="{{ route('dashboard') }}" class="btn btn-light btn-icon" title="Clear filters"><i class="ki-duotone ki-cross fs-2"><span class="path1"></span><span class="path2"></span></i></a>@endif</div>
-        </form>
     </div>
 </div>
 
@@ -115,6 +91,49 @@
     </div>
 </div>
 
+<div class="card card-flush shadow-sm mb-7 quick-view-card">
+    <div class="card-header align-items-center border-0"><div class="card-title"><div><h3 class="fw-bold mb-1">Quick Data View</h3><div class="text-muted fs-7">Viewing-only individual records for the selected filters.</div></div></div><div class="card-toolbar gap-3"><span class="badge badge-light-primary">{{number_format($quickPeople->total())}} matched individuals</span><button type="button" class="btn btn-sm btn-primary" data-bs-toggle="offcanvas" data-bs-target="#quickViewConfigurator"><i class="ki-duotone ki-filter fs-3"><span class="path1"></span><span class="path2"></span></i>Quick Data View</button></div></div>
+    <div class="card-body pt-2">
+        <div class="table-responsive"><table class="table align-middle table-row-dashed gy-4 quick-data-table"><thead><tr class="text-muted fw-bold text-uppercase fs-7"><th>Control Number</th><th>Individual</th><th>Birthdate / Age</th><th>Gender / Sector</th><th>Family Details</th><th>Address</th><th>Evacuation Center</th><th>Registered</th></tr></thead><tbody>
+        @forelse($quickPeople as $person)
+            @php($center = $person->evacuationCenter ?? $person->affectedFamily?->evacuationCenter)
+            <tr><td><span class="fw-semibold text-primary">{{$person->control_number ?: '—'}}</span></td><td><div class="fw-bold text-gray-900">{{$person->full_name ?: '—'}}</div><div class="text-muted fs-7">{{$person->occupation ?: 'No occupation recorded'}}</div></td><td>{{$person->birthdate?->format('M d, Y') ?: '—'}}<div class="text-muted fs-7">{{$person->age !== null ? $person->age.' years old' : 'Age unavailable'}}</div></td><td>{{$person->sex ?: '—'}}<div class="text-muted fs-7">{{\App\Support\MemberRemark::label($person->code) ?: 'No sector'}}</div></td><td>{{$person->relationship ?: '—'}}<div class="text-muted fs-7">Head: {{$person->family_head_name ?: $person->full_name ?: '—'}}</div></td><td>{{$person->street ?: '—'}}<div class="text-muted fs-7">{{$person->barangay ?: $person->affectedFamily?->barangay?->name ?: '—'}}, {{$person->city ?: 'Taguig City'}}</div></td><td>{{$center?->name ?: 'Unassigned'}}</td><td>{{$person->created_at?->format('M d, Y') ?: '—'}}</td></tr>
+        @empty
+            <tr><td colspan="8"><div class="text-center py-10"><i class="ki-duotone ki-information-5 fs-3x text-muted"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i><h4 class="mt-4 mb-1">No individuals found</h4><div class="text-muted">Try changing the Quick Data View filters.</div></div></td></tr>
+        @endforelse
+        </tbody></table></div>
+        @if($quickPeople->hasPages())<div class="d-flex justify-content-end mt-5">{{$quickPeople->links()}}</div>@endif
+    </div>
+</div>
+
+<div class="offcanvas offcanvas-end quick-view-configurator" tabindex="-1" id="quickViewConfigurator" aria-labelledby="quickViewConfiguratorLabel">
+    <form method="get" action="{{route('dashboard')}}" class="h-100 d-flex flex-column" id="quickViewForm">
+        <div class="offcanvas-header border-bottom px-7 py-5"><div><h3 id="quickViewConfiguratorLabel" class="fw-bold mb-1">Configure Quick Data View</h3><div class="text-muted fs-7">Apply filters and choose which individuals to display.</div></div><button type="button" class="btn btn-sm btn-icon btn-light" data-bs-dismiss="offcanvas"><i class="ki-duotone ki-cross fs-2"><span class="path1"></span><span class="path2"></span></i></button></div>
+        <div class="offcanvas-body px-7 py-6"><div class="row g-5">
+            <div class="col-12"><label class="form-label fw-semibold">Disaster</label><select name="disaster_id" class="form-select form-select-solid"><option value="">All disasters</option>@foreach($disasters as $item)<option value="{{$item->id}}" @selected(request('disaster_id')==$item->id)>{{$item->name}}</option>@endforeach</select></div>
+            <div class="col-12"><label class="form-label fw-semibold">Barangay</label><select name="barangay_id" class="form-select form-select-solid"><option value="">All barangays</option>@foreach($barangays as $item)<option value="{{$item->id}}" @selected(request('barangay_id')==$item->id)>{{$item->name}}</option>@endforeach</select></div>
+            <div class="col-12"><label class="form-label fw-semibold">Evacuation Center</label><select name="evacuation_center_id" class="form-select form-select-solid"><option value="">All evacuation centers</option>@foreach($centers as $item)<option value="{{$item->id}}" @selected(request('evacuation_center_id')==$item->id)>{{$item->name}}</option>@endforeach</select></div>
+            <div class="col-md-6"><label class="form-label fw-semibold">From</label><input name="date_from" value="{{request('date_from')}}" type="date" class="form-control form-control-solid"></div>
+            <div class="col-md-6"><label class="form-label fw-semibold">To</label><input name="date_to" value="{{request('date_to')}}" type="date" class="form-control form-control-solid"></div>
+        </div><div class="separator my-7"></div><div class="d-flex justify-content-between align-items-center mb-5"><div class="fw-bold fs-5"><i class="ki-duotone ki-filter-tablet text-primary fs-3 me-2"><span class="path1"></span><span class="path2"></span></i>Demographic Filters</div><div class="d-flex gap-4"><button type="button" class="btn btn-link btn-sm p-0" id="selectAllQuickCards">Select All</button><button type="button" class="btn btn-link btn-sm text-muted p-0" id="defaultQuickCards">Use Defaults</button></div></div>
+        @php($quickGroups = [
+            'gender' => ['Gender', ['male', 'female']],
+            'age' => ['Age', ['age_0_4', 'age_5_17', 'age_18_59', 'age_60_plus']],
+            'sector' => ['Sector', ['pwd', 'pregnant', 'lactating', 'solo_parent', 'four_ps']],
+        ])
+        <div id="quickViewCards">
+            <div class="quick-card-group mb-5"><label class="form-check form-check-custom form-check-solid"><input class="form-check-input quick-view-column" type="checkbox" name="quick_columns[]" value="total" @checked(in_array('total',$checkedQuickColumns))><span class="form-check-label fw-semibold text-gray-800">{{$quickViewColumns['total'][0]}}</span></label></div>
+            @foreach($quickGroups as $groupKey => [$groupLabel, $groupColumns])
+                <div class="quick-card-group mb-5">
+                    <div class="fw-bold text-gray-900 mb-4">{{$groupLabel}}</div>
+                    <div class="row g-4 ps-8">@foreach($groupColumns as $key)<div class="col-6"><label class="form-check form-check-custom form-check-solid"><input class="form-check-input quick-view-column" type="checkbox" name="quick_columns[]" value="{{$key}}" data-card-group="{{$groupKey}}" @checked(in_array($key,$checkedQuickColumns))><span class="form-check-label text-gray-700">{{$quickViewColumns[$key][0]}}</span></label></div>@endforeach</div>
+                </div>
+            @endforeach
+        </div><div class="notice bg-light-primary border border-primary border-dashed rounded p-4 mt-7"><div class="fw-semibold text-primary">Viewing only</div><div class="text-muted fs-7">Applying this view will not change any beneficiary records.</div></div></div>
+        <div class="border-top px-7 py-5 d-flex justify-content-end gap-3 bg-body"><a href="{{route('dashboard')}}" class="btn btn-light">Reset</a><button type="submit" class="btn btn-primary"><i class="ki-duotone ki-check fs-3"><span class="path1"></span><span class="path2"></span></i>Apply View</button></div>
+    </form>
+</div>
+
 @endsection
 
 @push('styles')
@@ -122,6 +141,7 @@
     .dashboard-hero{background:linear-gradient(120deg,#4a0d18 0%,#731c2b 58%,#9b2c3f 100%)}
     .dashboard-hero:after{content:"";position:absolute;width:360px;height:360px;border:70px solid rgba(255,255,255,.08);border-radius:50%;right:-80px;top:-170px}
     .dashboard-metrics-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.25rem}
+    .quick-view-card{border:1px solid #edf0f5}.quick-view-configurator{width:min(560px,100vw)!important}.quick-data-table{min-width:1250px}.quick-data-table thead th{white-space:nowrap}.quick-data-table tbody td{vertical-align:top}
     .metric-card{position:relative;overflow:hidden;border:1px solid #edf0f5;border-top:3px solid transparent;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
     .metric-card:after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;right:-42px;bottom:-48px;background:currentColor;opacity:.045;pointer-events:none}
     .metric-card-primary{border-top-color:#3e97ff;color:#3e97ff}.metric-card-warning{border-top-color:#ffc700;color:#ffc700}.metric-card-info{border-top-color:#7239ea;color:#7239ea}.metric-card-success{border-top-color:#50cd89;color:#50cd89}.metric-card-danger{border-top-color:#f1416c;color:#f1416c}
@@ -142,10 +162,10 @@
     .workflow-label{min-height:2.2rem;color:#5e6278;font-size:.76rem;line-height:1.25;font-weight:700;margin-top:.4rem;display:flex;align-items:flex-start;justify-content:center}
     .workflow-open{display:flex;align-items:center;gap:.2rem;color:#a1a5b7;font-size:.7rem;font-weight:600;margin-top:.45rem;opacity:0;transform:translateY(3px);transition:.18s}
     .workflow-stage:hover{background:#f8faff;transform:translateY(-2px)}.workflow-stage:hover .workflow-icon{background:#1877c9;color:#fff;transform:scale(1.04)}.workflow-stage:hover .workflow-open{color:#1877c9;opacity:1;transform:translateY(0)}
-    @media(max-width:1399.98px){.dashboard-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:1399.98px){.dashboard-metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.quick-view-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
     @media(max-width:1199.98px){.workflow-track{grid-template-columns:repeat(4,1fr);row-gap:1rem}.workflow-track:before{display:none}.workflow-open{opacity:1;transform:none}}
-    @media(max-width:991.98px){.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}}
-    @media(max-width:575.98px){.dashboard-metrics-grid{grid-template-columns:1fr}.metric-card .card-body{min-height:180px}.workflow-track{grid-template-columns:repeat(2,1fr)}.workflow-stage{padding:.65rem .25rem}.workflow-icon{width:56px;height:56px}}
+    @media(max-width:991.98px){.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.quick-view-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:575.98px){.dashboard-metrics-grid{grid-template-columns:1fr}.quick-view-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.quick-view-item{padding:.8rem}.metric-card .card-body{min-height:180px}.workflow-track{grid-template-columns:repeat(2,1fr)}.workflow-stage{padding:.65rem .25rem}.workflow-icon{width:56px;height:56px}}
 </style>
 @endpush
 
@@ -157,6 +177,35 @@
     window.addEventListener('pageshow', function (event) {
         if (event.persisted) {
             window.location.reload();
+        }
+    });
+    const quickCards = [...document.querySelectorAll('.quick-view-column')];
+    const quickGroups = [...document.querySelectorAll('.quick-view-group')];
+    const syncQuickGroups = () => quickGroups.forEach(group => {
+        const cards = quickCards.filter(card => card.dataset.cardGroup === group.dataset.group);
+        group.checked = cards.length > 0 && cards.every(card => card.checked);
+        group.indeterminate = cards.some(card => card.checked) && !group.checked;
+    });
+    quickGroups.forEach(group => group.addEventListener('change', () => {
+        quickCards.filter(card => card.dataset.cardGroup === group.dataset.group).forEach(card => card.checked = group.checked);
+        syncQuickGroups();
+    }));
+    quickCards.forEach(card => card.addEventListener('change', () => {
+        if (card.checked && card.value === 'total') quickCards.filter(item => item !== card).forEach(item => item.checked = false);
+        if (card.checked && card.value !== 'total') quickCards.find(item => item.value === 'total').checked = false;
+        syncQuickGroups();
+    }));
+    document.getElementById('selectAllQuickCards')?.addEventListener('click', () => { quickCards.forEach(card => card.checked = card.value !== 'total'); syncQuickGroups(); });
+    document.getElementById('defaultQuickCards')?.addEventListener('click', () => {
+        const defaults = ['total'];
+        quickCards.forEach(card => card.checked = defaults.includes(card.value));
+        syncQuickGroups();
+    });
+    syncQuickGroups();
+    document.getElementById('quickViewForm')?.addEventListener('submit', function (event) {
+        if (!quickCards.some(card => card.checked)) {
+            event.preventDefault();
+            Swal.fire({text: 'Select at least one data card.', icon: 'warning'});
         }
     });
 </script>

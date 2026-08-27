@@ -2,6 +2,7 @@
 
 namespace App\Models\Integration;
 
+use App\Support\MemberRemark;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -12,5 +13,10 @@ class PersonAffectedFamilyMember extends Model
     public function personAffected(): BelongsTo
     {
         return $this->belongsTo(PersonAffected::class);
+    }
+
+    public function getRemarksLabelAttribute(): string
+    {
+        return MemberRemark::label($this->code);
     }
 }

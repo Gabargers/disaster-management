@@ -67,7 +67,7 @@ class PersonAffectedController extends Controller
         }
 
         return view('disaster.person-affecteds', [
-            'page_title' => 'TCISS Family Affected',
+            'page_title' => 'TCISS Affected Families',
             'page_description' => 'Families received from the TCISS API integration.',
             'people' => $people,
             'totalPeople' => $totalFamilies,
@@ -99,6 +99,13 @@ class PersonAffectedController extends Controller
             'relationship' => $personAffected->relationship, 'housing' => $personAffected->housing,
             'latest_status' => $personAffected->latestStatus?->status,
             'date_tagged' => $personAffected->latestStatus?->date_tagged?->toIso8601String(),
+            // Reserved for the TCISS read-only image integration. Once TCISS provides its
+            // image endpoint, expose only our authenticated proxy URL here.
+            'tciss_image' => [
+                'available' => false,
+                'url' => null,
+                'label' => 'TCISS verification image',
+            ],
             'evacuation_center' => $personAffected->evacuationCenter ? [
                 'id' => $personAffected->evacuationCenter->id,
                 'name' => $personAffected->evacuationCenter->name,

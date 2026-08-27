@@ -53,10 +53,56 @@ class EvacuationCenterPayoutTest extends TestCase
     public function test_beneficiary_payout_details_include_family_composition(): void
     {
         $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
-        $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
+        $family = $center->activeAssignments()->with('family.familyMembers')->firstOrFail()->family;
         $this->actingAs($this->staff)->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
             ->assertOk()->assertJsonPath('data.affected_family.id', $family->id)
             ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id);
+    }
+
+    public function test_family_member_remarks_can_be_updated_from_the_center_details(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $family = $center->activeAssignments()->with('family.familyMembers')->firstOrFail()->family;
+        $member = $family->familyMembers->firstOrFail();
+
+        $this->actingAs($this->staff)->patchJson(route('disaster.payouts.centers.families.members.remarks', [$center, $family, $member]), [
+            'remarks_code' => 'PWD',
+        ])->assertOk()->assertJsonPath('data.remarks_code', 'PWD')->assertJsonPath('data.remarks_label', 'Person with disability');
+
+        $this->assertDatabaseHas('family_members', ['id' => $member->id, 'remarks_codes' => 'PWD']);
+    }
+
+    public function test_assigned_families_can_be_exported_using_the_current_filters(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
+        $response = $this->actingAs($this->staff)->get(route('disaster.payouts.centers.families.export', [$center, 'search'=>$family->household_head_given_name]));
+
+        $response->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $content = $response->streamedContent();
+        $this->assertStringStartsWith('PK', $content);
+        $path = tempnam(sys_get_temp_dir(), 'center-export-');
+        file_put_contents($path, $content);
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
+        unlink($path);
+        $workbookText = collect($sheet->toArray())->flatten()->implode(' ');
+        $this->assertStringContainsString($family->household_head_full_name, $workbookText);
+        $this->assertStringContainsString($family->familyMembers->firstOrFail()->name, $workbookText);
+    }
+
+    public function test_only_admin_and_superadmin_can_transfer_a_family_from_the_center_page(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $assignment = $center->activeAssignments()->whereDoesntHave('family.payoutReleases', fn ($query) => $query->where('status', 'Released'))->with('family')->firstOrFail();
+        $target = EvacuationCenter::create(['uuid'=>(string)Str::uuid(),'disaster_id'=>$center->disaster_id,'barangay_id'=>$center->barangay_id,'district'=>$center->district,'name'=>'Transfer Test Center','capacity'=>100,'status'=>'ACTIVE','is_active'=>true]);
+
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))->assertOk()->assertViewHas('canTransferFamilies', false);
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $this->actingAs($admin)->get(route('disaster.payouts.centers.show', $center))->assertOk()->assertViewHas('canTransferFamilies', true)->assertSee('Transfer Evacuation Center');
+        $this->actingAs($admin)->patchJson(route('disaster.payouts.centers.families.transfer', [$center, $assignment->family]), ['evacuation_center_id'=>$target->id,'reason'=>'Transferred for capacity balancing.'])->assertOk();
+
+        $this->assertDatabaseHas('affected_families', ['id'=>$assignment->affected_family_id,'evacuation_center_id'=>$target->id]);
+        $this->assertDatabaseHas('evacuation_center_assignments', ['id'=>$assignment->id,'status'=>'TRANSFERRED']);
     }
 
     public function test_bagumbayan_center_returns_its_five_connected_sample_families(): void
@@ -163,6 +209,40 @@ class EvacuationCenterPayoutTest extends TestCase
                 ->get(route('disaster.payouts.centers.show', $center))
                 ->assertOk()->assertDontSee('Make Payout Available');
         }
+    }
+
+    public function test_bfp_certificate_is_uploaded_per_evacuation_center(): void
+    {
+        Storage::fake('local');
+        $center = EvacuationCenter::firstOrFail();
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()->assertSee('BFP Certificate')->assertSee('Export Excel');
+
+        $this->actingAs($this->staff)->post(route('disaster.payouts.centers.bfp-certificate', $center), [
+            'bfp_certificate' => UploadedFile::fake()->create('center-bfp.pdf', 128, 'application/pdf'),
+        ])->assertRedirect();
+
+        $document = $center->documents()->where('document_type', 'bfp_certificate')->firstOrFail();
+        $this->assertSame('center-bfp.pdf', $document->original_name);
+        Storage::disk('local')->assertExists($document->file_path);
+    }
+
+    public function test_payroll_modal_uses_household_head_valid_id_requirement(): void
+    {
+        Storage::fake('local');
+        $release = PayoutRelease::where('status', 'Released')->firstOrFail();
+        $family = $release->affectedFamily;
+
+        $this->actingAs($this->staff)->get(route('disaster.payroll.index'))
+            ->assertOk()->assertSee('Valid ID of Household Head')->assertDontSee('Bureau of Fire Protection (BFP) Certificate');
+        $this->actingAs($this->staff)->post(route('disaster.payroll.requirements', $family), [
+            'valid_id_document' => UploadedFile::fake()->image('household-head-id.jpg'),
+        ])->assertOk()->assertJsonPath('data.valid_id_name', 'household-head-id.jpg');
+
+        $this->assertDatabaseHas('uploaded_documents', [
+            'documentable_type' => \App\Models\Disaster\PostPayoutRequirement::class,
+            'document_type' => 'valid_id_document', 'original_name' => 'household-head-id.jpg',
+        ]);
     }
 
     private function releaseData(): array
