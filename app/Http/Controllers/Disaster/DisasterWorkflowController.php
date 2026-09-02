@@ -70,6 +70,10 @@ class DisasterWorkflowController extends Controller {
  public function evacuationMapCenters(){
   $centers=EvacuationCenter::query()
    ->with('barangay:id,name')
+   ->with([
+    'activeAssignments.family'=>fn($q)=>$q->withCount('familyMembers'),
+    'unlinkedPersonAffecteds'=>fn($q)=>$q->familyHeads()->withCount('familyMembers'),
+   ])
    ->withCount([
     'activeAssignments as assigned_families_count',
     'unlinkedPersonAffecteds as tciss_families_count'=>fn($q)=>$q->familyHeads(),
@@ -81,18 +85,23 @@ class DisasterWorkflowController extends Controller {
     && is_finite((float)$center->longitude)
     && (float)$center->latitude>=-90 && (float)$center->latitude<=90
     && (float)$center->longitude>=-180 && (float)$center->longitude<=180)
-   ->map(fn($center)=>[
-    'id'=>$center->id,
-    'name'=>$center->name,
-    'latitude'=>(float)$center->latitude,
-    'longitude'=>(float)$center->longitude,
-    'address'=>$center->address,
-    'barangay'=>$center->barangay?->name,
-    'capacity'=>$center->capacity,
-    'status'=>$center->status,
-    'is_active'=>$center->is_active,
-    'family_count'=>$center->assigned_families_count+$center->tciss_families_count,
-   ])->values();
+   ->map(function($center){
+    $linkedIndividuals=$center->activeAssignments->sum(fn($assignment)=>$assignment->family?1+$assignment->family->family_members_count:0);
+    $tcissIndividuals=$center->unlinkedPersonAffecteds->sum(fn($person)=>1+$person->family_members_count);
+    return [
+     'id'=>$center->id,
+     'name'=>$center->name,
+     'latitude'=>(float)$center->latitude,
+     'longitude'=>(float)$center->longitude,
+     'address'=>$center->address,
+     'barangay'=>$center->barangay?->name,
+     'capacity'=>$center->capacity,
+     'status'=>$center->status,
+     'is_active'=>$center->is_active,
+     'family_count'=>$center->assigned_families_count+$center->tciss_families_count,
+     'individual_count'=>$linkedIndividuals+$tcissIndividuals,
+    ];
+   })->values();
 
   return response()->json(['data'=>$centers,'updated_at'=>now()->toIso8601String()])
    ->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');

@@ -16,6 +16,7 @@
         <link rel="stylesheet" href="{{ asset('assets/plugins/custom/datatables/datatables.bundle.css') }}">
     @endif
     <link rel="icon" type="image/webp" href="{{ asset('images/CSWDO.webp') }}">
+    @stack('styles')
 
     <style>
         [x-cloak] {
@@ -95,7 +96,6 @@
 
     @stack('modals')
     @stack('scripts')
-    @stack('styles')
 </body>
 
 </html>

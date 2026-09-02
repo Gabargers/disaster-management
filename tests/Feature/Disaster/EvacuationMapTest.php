@@ -65,6 +65,8 @@ class EvacuationMapTest extends TestCase
             ->assertJsonPath('data.0.longitude', 121.0509)
             ->assertJsonPath('data.0.address', 'Test Street')
             ->assertJsonPath('data.0.barangay', 'Map Test Barangay')
-            ->assertJsonPath('data.0.capacity', 250);
+            ->assertJsonPath('data.0.capacity', 250)
+            ->assertJsonPath('data.0.family_count', 0)
+            ->assertJsonPath('data.0.individual_count', 0);
     }
 }

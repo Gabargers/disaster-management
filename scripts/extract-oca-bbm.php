@@ -82,5 +82,7 @@ foreach ($placemarks as $placemark) {
 }
 
 $geojson = ['type' => 'FeatureCollection', 'name' => 'OCA BBM Barangay Boundaries', 'features' => $features];
-file_put_contents($target, json_encode($geojson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+// Keep the public payload compact; pretty-printing multiplied this static
+// geometry file's transfer size without adding value to the browser.
+file_put_contents($target, json_encode($geojson, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 fwrite(STDOUT, sprintf("Extracted %d barangay boundaries to %s\n", count($features), $target));

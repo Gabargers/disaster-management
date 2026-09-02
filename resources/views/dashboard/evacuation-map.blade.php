@@ -65,7 +65,7 @@
 
 @push('styles')
 <link rel="stylesheet" href="{{ asset('assets/plugins/custom/leaflet/leaflet.bundle.css') }}">
-<link rel="stylesheet" href="{{ asset('assets/css/evacuation-map.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/css/evacuation-map.css') }}?v=3">
 <style>
     .map-page-toolbar{position:relative;z-index:2;margin-top:1.5rem;padding:1.5rem 1.75rem;border:1px solid #edf0f5;border-radius:1rem;background:var(--bs-body-bg,#fff);box-shadow:0 5px 18px rgba(24,28,50,.06)}
     .map-shell,.center-panel{border:1px solid #edf0f5;min-height:620px}.map-shell{overflow:hidden}.map-shell #evacuation-map{min-height:620px}
@@ -77,7 +77,7 @@
 
 @push('scripts')
 <script src="{{ asset('assets/plugins/custom/leaflet/leaflet.bundle.js') }}"></script>
-<script src="{{ asset('assets/js/evacuation-map.js') }}"></script>
+<script src="{{ asset('assets/js/evacuation-map.js') }}?v=4"></script>
 <script>
     window.addEventListener('pageshow', function (event) {
         if (event.persisted) window.location.reload();
