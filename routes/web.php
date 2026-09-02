@@ -21,6 +21,9 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->name('dashboard');
+    Route::get('/evacuation-map', [DisasterWorkflowController::class, 'evacuationMap'])->name('evacuation-map');
+    Route::get('/evacuation-map/display', [DisasterWorkflowController::class, 'evacuationMapDisplay'])->name('evacuation-map.display');
+    Route::get('/evacuation-map/centers', [DisasterWorkflowController::class, 'evacuationMapCenters'])->name('evacuation-map.centers');
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 

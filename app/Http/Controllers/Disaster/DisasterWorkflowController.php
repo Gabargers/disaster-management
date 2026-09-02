@@ -45,6 +45,58 @@ class DisasterWorkflowController extends Controller {
   $metrics['ACTIVE_EVACUATION_CENTERS']=EvacuationCenter::where('is_active',true)->where('status','ACTIVE')->count();
   return response()->view('dashboard.index',$this->filters()+compact('metrics','quickView','quickViewColumns','selectedQuickColumns','checkedQuickColumns','quickPeople')+['page_title'=>'Disaster Operations Dashboard','page_description'=>'Live family assistance, evacuation, validation, and payout operations.'])->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0')->header('Pragma','no-cache')->header('Expires','0');
  }
+ public function evacuationMap(){
+  $centers=EvacuationCenter::query()
+   ->with('barangay')
+   ->withCount([
+    'activeAssignments as assigned_families_count',
+    'unlinkedPersonAffecteds as tciss_families_count'=>fn($q)=>$q->familyHeads(),
+   ])
+   ->where('is_active',true)
+   ->where('status','ACTIVE')
+   ->orderBy('name')
+   ->get()
+   ->each(fn($center)=>$center->setAttribute('live_family_count',$center->assigned_families_count+$center->tciss_families_count));
+
+  return response()->view('dashboard.evacuation-map',compact('centers')+[
+   'page_title'=>'Evacuation Center Map',
+   'page_description'=>'Live viewing of evacuation areas and assigned families.',
+  ])->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');
+ }
+ public function evacuationMapDisplay(){
+  return response()->view('dashboard.evacuation-map-display')
+   ->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');
+ }
+ public function evacuationMapCenters(){
+  $centers=EvacuationCenter::query()
+   ->with('barangay:id,name')
+   ->withCount([
+    'activeAssignments as assigned_families_count',
+    'unlinkedPersonAffecteds as tciss_families_count'=>fn($q)=>$q->familyHeads(),
+   ])
+   ->whereNotNull('latitude')
+   ->whereNotNull('longitude')
+   ->get()
+   ->filter(fn($center)=>is_finite((float)$center->latitude)
+    && is_finite((float)$center->longitude)
+    && (float)$center->latitude>=-90 && (float)$center->latitude<=90
+    && (float)$center->longitude>=-180 && (float)$center->longitude<=180)
+   ->map(fn($center)=>[
+    'id'=>$center->id,
+    'name'=>$center->name,
+    'latitude'=>(float)$center->latitude,
+    'longitude'=>(float)$center->longitude,
+    'address'=>$center->address,
+    'barangay'=>$center->barangay?->name,
+    'capacity'=>$center->capacity,
+    'status'=>$center->status,
+    'is_active'=>$center->is_active,
+    'family_count'=>$center->assigned_families_count+$center->tciss_families_count,
+   ])->values();
+
+  return response()->json(['data'=>$centers,'updated_at'=>now()->toIso8601String()])
+   ->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');
+ }
  public function duplicates(Request $r){$families=$this->query($r)->with(['duplicateChecks.possibleDuplicateFamily','familyMembers'])->whereIn('status',[FamilyStatus::DUPLICATE_CHECK_PENDING,FamilyStatus::POSSIBLE_DUPLICATE])->latest()->paginate(20)->withQueryString();return view('disaster.duplicates',compact('families')+['page_title'=>'Duplicate Checking','page_description'=>'Review connected DAFAC household records.']);}
  public function resolveDuplicate(Request $r,AffectedFamily $family){$data=$r->validate(['resolution'=>['required',Rule::in(['clear','possible','confirm','separate'])],'remarks'=>['nullable','string','max:2000']]);$target=match($data['resolution']){'possible'=>FamilyStatus::POSSIBLE_DUPLICATE,'confirm'=>FamilyStatus::DUPLICATE_CONFIRMED,default=>FamilyStatus::DUPLICATE_CLEARED};$check=$family->duplicateChecks()->latest()->first()??$family->duplicateChecks()->create(['match_score'=>0,'matched_fields'=>[]]);$check->update(['resolution'=>$target===FamilyStatus::DUPLICATE_CONFIRMED?'Duplicate':($data['resolution']==='separate'?'Separate Household':'Resolved'),'resolved_by'=>$r->user()->id,'resolved_at'=>now()]);if($target===FamilyStatus::DUPLICATE_CONFIRMED&&$family->status===FamilyStatus::DUPLICATE_CHECK_PENDING)$family=$this->workflow->transition($family,FamilyStatus::POSSIBLE_DUPLICATE,$r->user(),'possible_duplicate_flagged',$data['remarks']??null);$this->workflow->transition($family,$target,$r->user(),'duplicate_check_resolved',$data['remarks']??null,['resolution'=>$data['resolution']]);if($target===FamilyStatus::DUPLICATE_CLEARED)$this->workflow->transition($family->refresh(),FamilyStatus::VALIDATION_PENDING,$r->user(),'validation_queued');return back()->with('success','Duplicate review saved.');}
  public function validations(Request $r){$families=$this->query($r)->with('validationRecords')->whereIn('status',[FamilyStatus::DUPLICATE_CLEARED,FamilyStatus::VALIDATION_PENDING,FamilyStatus::NEEDS_CORRECTION])->latest()->paginate(20)->withQueryString();return view('disaster.validation',compact('families')+['page_title'=>'Validation','page_description'=>'Validate connected household records.']);}

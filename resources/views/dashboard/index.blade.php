@@ -30,16 +30,14 @@
 <div class="dashboard-hero rounded-4 p-7 p-lg-9 mb-7 text-white position-relative overflow-hidden">
     <div class="position-relative z-index-2 d-flex flex-column flex-lg-row justify-content-between gap-6 align-items-lg-center">
         <div>
-            <div class="text-white text-opacity-75 fw-semibold mb-2">DISASTER ASSISTANCE OPERATIONS</div>
-            <h1 class="text-white fw-bold mb-2">Good day, {{ auth()->user()->first_name ?: auth()->user()->name }}</h1>
-            <div class="text-white text-opacity-75 fs-6">Monitor households and move urgent cases through the assistance workflow.</div>
+            <div class="text-white text-opacity-75 fw-semibold mb-2">EVACUATION CENTER MONITORING</div>
+            <h1 class="text-white fw-bold mb-2">View Evacuation Map</h1>
+            <div class="text-white text-opacity-75 fs-6">View evacuation areas, addresses, and live assigned-family counts.</div>
         </div>
-        @can('manage payout schedules')
-            <a href="{{ route('disaster.payouts.index') }}" class="btn btn-light btn-lg fw-bold text-primary flex-shrink-0">
+            <a href="{{ route('evacuation-map') }}" class="btn btn-light btn-lg fw-bold text-primary flex-shrink-0">
                 <i class="ki-duotone ki-geolocation fs-2 text-primary"><span class="path1"></span><span class="path2"></span></i>
-                Open Evacuation Centers
+                View Live Map
             </a>
-        @endcan
     </div>
 </div>
 

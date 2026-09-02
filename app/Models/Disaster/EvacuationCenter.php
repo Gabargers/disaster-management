@@ -14,11 +14,11 @@ class EvacuationCenter extends Model
 {
     use HasUuid;
 
-    protected $fillable = ['uuid', 'cswdo_catalog_id', 'disaster_id', 'barangay_id', 'district', 'name', 'address', 'contact_person', 'assistant_coordinator', 'contact_number', 'capacity', 'description', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active'];
+    protected $fillable = ['uuid', 'cswdo_catalog_id', 'disaster_id', 'barangay_id', 'district', 'name', 'address', 'latitude', 'longitude', 'contact_person', 'assistant_coordinator', 'contact_number', 'capacity', 'description', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active'];
 
     protected function casts(): array
     {
-        return ['capacity' => 'integer', 'is_active' => 'boolean', 'default_payout_date' => 'date'];
+        return ['capacity' => 'integer', 'latitude' => 'float', 'longitude' => 'float', 'is_active' => 'boolean', 'default_payout_date' => 'date'];
     }
 
     public function barangay(): BelongsTo

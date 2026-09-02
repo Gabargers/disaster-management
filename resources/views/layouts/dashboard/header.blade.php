@@ -24,6 +24,17 @@
         <div class="d-flex align-items-center flex-wrap">
             <div class="d-flex align-items-center py-3 py-lg-0">
                 <div class="me-3">
+                    <a href="{{ route('evacuation-map.display') }}" class="btn btn-icon btn-custom btn-active-color-primary"
+                        title="Open map display" aria-label="Open map display">
+                        <i class="ki-duotone ki-screen fs-1 text-white">
+                            <span class="path1"></span>
+                            <span class="path2"></span>
+                            <span class="path3"></span>
+                            <span class="path4"></span>
+                        </i>
+                    </a>
+                </div>
+                <div class="me-3">
                     <a href="#" class="btn btn-icon btn-custom btn-active-color-primary" data-kt-menu-trigger="click"
                         data-kt-menu-attach="parent" data-kt-menu-placement="bottom-end">
                         <i class="ki-duotone ki-user fs-1 text-white">
