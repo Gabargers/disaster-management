@@ -6,7 +6,7 @@ use App\Enums\FamilyStatus; use App\Http\Controllers\Controller; use App\Models\
 class DisasterWorkflowController extends Controller {
  public function __construct(private DisasterAssistanceWorkflowService $workflow){}
  private function query(Request $r){return AffectedFamily::query()->with(['dafacRecord','barangay','disaster','evacuationCenter'])->when($r->filled('disaster_id'),fn($q)=>$q->where('disaster_id',$r->integer('disaster_id')))->when($r->filled('barangay_id'),fn($q)=>$q->where('barangay_id',$r->integer('barangay_id')))->when($r->filled('evacuation_center_id'),fn($q)=>$q->where('evacuation_center_id',$r->integer('evacuation_center_id')))->when($r->filled('status'),fn($q)=>$q->where('status',$r->status))->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));}
- private function filters(){return ['disasters'=>Disaster::orderByDesc('incident_date')->get(),'barangays'=>Barangay::orderBy('name')->get(),'centers'=>EvacuationCenter::orderBy('name')->get()];}
+ private function filters(){return ['disasters'=>Disaster::orderByDesc('incident_date')->get(),'barangays'=>Barangay::orderBy('name')->get(),'centers'=>EvacuationCenter::createdCenters()->orderBy('name')->get()];}
  public function dashboard(Request $r){
   $base=$this->query($r);
   $statusCounts=(clone $base)->selectRaw('status, COUNT(*) as aggregate')->groupBy('status')->pluck('aggregate','status');
@@ -42,11 +42,12 @@ class DisasterWorkflowController extends Controller {
   $metrics['PERSON_AFFECTED']=$quickView['total'];
   $metrics['RELEASED_PAYOUTS']=PayoutRelease::where('status','Released')->whereIn('affected_family_id',(clone $base)->select('affected_families.id'))->distinct('affected_family_id')->count('affected_family_id');
   $metrics['ASSIGNED_FAMILIES']=EvacuationCenterAssignment::where('status','ACTIVE')->count()+PersonAffected::familyHeads()->whereNull('affected_family_id')->whereNotNull('evacuation_center_id')->count();
-  $metrics['ACTIVE_EVACUATION_CENTERS']=EvacuationCenter::where('is_active',true)->where('status','ACTIVE')->count();
+  $metrics['ACTIVE_EVACUATION_CENTERS']=EvacuationCenter::createdCenters()->where('is_active',true)->where('status','ACTIVE')->count();
   return response()->view('dashboard.index',$this->filters()+compact('metrics','quickView','quickViewColumns','selectedQuickColumns','checkedQuickColumns','quickPeople')+['page_title'=>'Disaster Operations Dashboard','page_description'=>'Live family assistance, evacuation, validation, and payout operations.'])->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0')->header('Pragma','no-cache')->header('Expires','0');
  }
  public function evacuationMap(){
   $centers=EvacuationCenter::query()
+   ->createdCenters()
    ->with('barangay')
    ->withCount([
     'activeAssignments as assigned_families_count',
@@ -69,6 +70,7 @@ class DisasterWorkflowController extends Controller {
  }
  public function evacuationMapCenters(){
   $centers=EvacuationCenter::query()
+   ->createdCenters()
    ->with('barangay:id,name')
    ->with([
     'activeAssignments.family'=>fn($q)=>$q->withCount('familyMembers'),
@@ -78,21 +80,21 @@ class DisasterWorkflowController extends Controller {
     'activeAssignments as assigned_families_count',
     'unlinkedPersonAffecteds as tciss_families_count'=>fn($q)=>$q->familyHeads(),
    ])
-   ->whereNotNull('latitude')
-   ->whereNotNull('longitude')
+   ->where('is_active',true)
+   ->where('status','ACTIVE')
    ->get()
-   ->filter(fn($center)=>is_finite((float)$center->latitude)
-    && is_finite((float)$center->longitude)
-    && (float)$center->latitude>=-90 && (float)$center->latitude<=90
-    && (float)$center->longitude>=-180 && (float)$center->longitude<=180)
    ->map(function($center){
+    $hasValidCoordinates=$center->latitude!==null && $center->longitude!==null
+     && is_finite((float)$center->latitude) && is_finite((float)$center->longitude)
+     && (float)$center->latitude>=-90 && (float)$center->latitude<=90
+     && (float)$center->longitude>=-180 && (float)$center->longitude<=180;
     $linkedIndividuals=$center->activeAssignments->sum(fn($assignment)=>$assignment->family?1+$assignment->family->family_members_count:0);
     $tcissIndividuals=$center->unlinkedPersonAffecteds->sum(fn($person)=>1+$person->family_members_count);
     return [
      'id'=>$center->id,
      'name'=>$center->name,
-     'latitude'=>(float)$center->latitude,
-     'longitude'=>(float)$center->longitude,
+     'latitude'=>$hasValidCoordinates?(float)$center->latitude:null,
+     'longitude'=>$hasValidCoordinates?(float)$center->longitude:null,
      'address'=>$center->address,
      'barangay'=>$center->barangay?->name,
      'capacity'=>$center->capacity,
@@ -131,7 +133,7 @@ class DisasterWorkflowController extends Controller {
   $selected=array_values(array_intersect(array_keys($columns),(array)$r->input('columns',array_keys($columns))));
   if($selected===[])$selected=array_keys($columns);
   $incident=$r->filled('disaster_id')?Disaster::find($r->integer('disaster_id')):null;
-  $centers=EvacuationCenter::query()->with(['barangay','affectedFamilies'=>function($q)use($r,$incident){$q->with('familyMembers')->when($incident,fn($q)=>$q->where('disaster_id',$incident->id))->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));},'unlinkedPersonAffecteds'=>function($q)use($r){$q->with('familyMembers')->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));}])->when($incident,fn($q)=>$q->where(fn($q)=>$q->where('disaster_id',$incident->id)->orWhereHas('affectedFamilies',fn($f)=>$f->where('disaster_id',$incident->id))))->when($r->filled('barangay_id'),fn($q)=>$q->where('barangay_id',$r->integer('barangay_id')))->when($r->filled('evacuation_center_id'),fn($q)=>$q->whereKey($r->integer('evacuation_center_id')))->when($r->filled('district'),fn($q)=>$q->where(fn($q)=>$q->where('district',$r->district)->orWhereHas('barangay',fn($b)=>$b->where('district',$r->district))))->where('is_active',true)->orderBy('district')->orderBy('name')->get();
+  $centers=EvacuationCenter::query()->createdCenters()->with(['barangay','affectedFamilies'=>function($q)use($r,$incident){$q->with('familyMembers')->when($incident,fn($q)=>$q->where('disaster_id',$incident->id))->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));},'unlinkedPersonAffecteds'=>function($q)use($r){$q->with('familyMembers')->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));}])->when($incident,fn($q)=>$q->where(fn($q)=>$q->where('disaster_id',$incident->id)->orWhereHas('affectedFamilies',fn($f)=>$f->where('disaster_id',$incident->id))))->when($r->filled('barangay_id'),fn($q)=>$q->where('barangay_id',$r->integer('barangay_id')))->when($r->filled('evacuation_center_id'),fn($q)=>$q->whereKey($r->integer('evacuation_center_id')))->when($r->filled('district'),fn($q)=>$q->where(fn($q)=>$q->where('district',$r->district)->orWhereHas('barangay',fn($b)=>$b->where('district',$r->district))))->where('is_active',true)->orderBy('district')->orderBy('name')->get();
   $rows=$centers->map(function($center){
    $families=$center->affectedFamilies; $externalFamilies=$center->unlinkedPersonAffecteds; $members=$families->flatMap->familyMembers;
    $people=$members->map(fn($m)=>['age'=>$m->age,'sex'=>$m->sex,'remarks'=>strtoupper((string)$m->remarks_codes)]);

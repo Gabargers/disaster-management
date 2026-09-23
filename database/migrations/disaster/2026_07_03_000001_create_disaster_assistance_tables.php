@@ -49,7 +49,7 @@ return new class extends Migration
             $table->text('complete_address');
             $table->enum('house_ownership', ['Owner', 'Renter', 'Sharer']);
             $table->enum('housing_condition', ['Totally Damaged', 'Partially Damaged', 'Water Damage']);
-            $table->enum('health_condition', ['Dead', 'Injured', 'Missing', 'With Illness'])->nullable();
+            $table->enum('health_condition', ['N/A', 'Dead', 'Injured', 'Missing', 'With Illness'])->nullable();
             $table->string('status')->default(FamilyStatus::NEEDS_REVIEW->value)->index();
             $table->string('exact_household_hash')->nullable()->unique();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();

@@ -5,6 +5,7 @@ namespace App\Models\Disaster;
 use App\Models\Cms\Barangay;
 use App\Models\Disaster\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -14,11 +15,11 @@ class EvacuationCenter extends Model
 {
     use HasUuid;
 
-    protected $fillable = ['uuid', 'cswdo_catalog_id', 'disaster_id', 'barangay_id', 'district', 'name', 'address', 'latitude', 'longitude', 'contact_person', 'assistant_coordinator', 'contact_number', 'capacity', 'description', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active'];
+    protected $fillable = ['uuid', 'cswdo_catalog_id', 'disaster_id', 'barangay_id', 'district', 'name', 'address', 'latitude', 'longitude', 'contact_person', 'assistant_coordinator', 'contact_number', 'capacity', 'description', 'date_opened', 'disaster_class_name', 'status', 'payout_availability', 'default_payout_date', 'default_payout_start_time', 'default_payout_end_time', 'created_by', 'updated_by', 'is_active', 'closed_at', 'closed_by', 'closure_notes'];
 
     protected function casts(): array
     {
-        return ['capacity' => 'integer', 'latitude' => 'float', 'longitude' => 'float', 'is_active' => 'boolean', 'default_payout_date' => 'date'];
+        return ['capacity' => 'integer', 'latitude' => 'float', 'longitude' => 'float', 'is_active' => 'boolean', 'date_opened' => 'date', 'default_payout_date' => 'date', 'closed_at' => 'datetime'];
     }
 
     public function barangay(): BelongsTo
@@ -26,7 +27,13 @@ class EvacuationCenter extends Model
         return $this->belongsTo(Barangay::class);
     }
 
+    public function scopeCreatedCenters(Builder $query): Builder
+    {
+        return $query->whereNotNull('disaster_id');
+    }
+
     public function disaster(): BelongsTo { return $this->belongsTo(Disaster::class); }
+    public function closedBy(): BelongsTo { return $this->belongsTo(\App\Models\Auth\User::class, 'closed_by'); }
 
     public function affectedFamilies(): HasMany
     {

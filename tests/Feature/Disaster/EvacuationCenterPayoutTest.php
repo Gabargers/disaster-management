@@ -30,7 +30,59 @@ class EvacuationCenterPayoutTest extends TestCase
     {
         $this->actingAs($this->staff)->get(route('disaster.payouts.index'))
             ->assertOk()->assertSee('Evacuation Center Management')->assertSee('Evacuation Center')
+            ->assertDontSee('Evacuation History')->assertDontSee('Close Center')
             ->assertDontSee('Payout Setup')->assertDontSee('>Assign<', false);
+    }
+
+    public function test_center_can_be_closed_and_is_moved_to_evacuation_history(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $this->actingAs($admin)->patchJson(route('disaster.payouts.centers.close', $center), [
+            'closure_notes' => 'All families have returned home safely.',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('evacuation_centers', [
+            'id' => $center->id, 'status' => 'CLOSED', 'is_active' => false,
+            'closed_by' => $admin->id, 'closure_notes' => 'All families have returned home safely.',
+        ]);
+        $this->actingAs($this->staff)->get(route('disaster.payouts.index'))->assertOk()->assertDontSee($center->name);
+        $this->actingAs($admin)->get(route('disaster.payouts.history'))->assertOk()
+            ->assertSee($center->name)->assertSee('All families have returned home safely.')
+            ->assertSee('Configure Evacuation History')->assertSee('Export Excel')
+            ->assertSee('Individuals Recorded');
+        $export = $this->actingAs($admin)->get(route('disaster.payouts.history.export', [
+            'disaster_id' => $center->disaster_id,
+            'columns' => ['center', 'disaster_title', 'families_recorded', 'individuals_recorded', 'closed_at'],
+        ]));
+        $export->assertOk()->assertDownload();
+        $workbook = $export->streamedContent();
+        $this->assertStringContainsString('xl/worksheets/sheet2.xml', $workbook);
+        $this->assertStringContainsString('xl/media/', $workbook);
+        $this->actingAs($this->staff)->getJson(route('evacuation-map.centers'))->assertOk()
+            ->assertJsonMissing(['id' => $center->id]);
+    }
+
+    public function test_closing_a_center_requires_a_closure_note(): void
+    {
+        $center = EvacuationCenter::firstOrFail();
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $this->actingAs($admin)->patchJson(route('disaster.payouts.centers.close', $center), [])
+            ->assertUnprocessable()->assertJsonValidationErrors('closure_notes');
+    }
+
+    public function test_non_admin_cannot_close_centers_or_view_evacuation_history(): void
+    {
+        $center = EvacuationCenter::firstOrFail();
+
+        $this->actingAs($this->staff)->get(route('disaster.payouts.history'))->assertForbidden();
+        $this->actingAs($this->staff)->get(route('disaster.payouts.history.export'))->assertForbidden();
+        $this->actingAs($this->staff)->patchJson(route('disaster.payouts.centers.close', $center), [
+            'closure_notes' => 'Should not be accepted.',
+        ])->assertForbidden();
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()->assertDontSee('Close Center');
     }
 
     public function test_open_navigates_to_dedicated_center_page_with_live_totals(): void
@@ -56,7 +108,8 @@ class EvacuationCenterPayoutTest extends TestCase
         $family = $center->activeAssignments()->with('family.familyMembers')->firstOrFail()->family;
         $this->actingAs($this->staff)->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
             ->assertOk()->assertJsonPath('data.affected_family.id', $family->id)
-            ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id);
+            ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id)
+            ->assertJsonPath('data.payout.released_by', $this->staff->name);
     }
 
     public function test_family_member_remarks_can_be_updated_from_the_center_details(): void
@@ -70,6 +123,34 @@ class EvacuationCenterPayoutTest extends TestCase
         ])->assertOk()->assertJsonPath('data.remarks_code', 'PWD')->assertJsonPath('data.remarks_label', 'Person with disability');
 
         $this->assertDatabaseHas('family_members', ['id' => $member->id, 'remarks_codes' => 'PWD']);
+    }
+
+    public function test_health_condition_accepts_na_and_validated_family_cannot_be_validated_again(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
+        $family->validationRecords()->delete();
+
+        $payload = [
+            'house_ownership' => 'Owner',
+            'health_condition' => 'N/A',
+            'housing_condition' => 'Partially Damaged',
+        ];
+
+        $this->actingAs($this->staff)
+            ->patchJson(route('disaster.payouts.centers.families.housing-condition', [$center, $family]), $payload)
+            ->assertOk()
+            ->assertJsonPath('data.health_condition', 'N/A')
+            ->assertJsonPath('data.validation_status', 'Validated');
+
+        $this->assertDatabaseHas('affected_families', ['id' => $family->id, 'health_condition' => 'N/A']);
+        $this->actingAs($this->staff)
+            ->patchJson(route('disaster.payouts.centers.families.housing-condition', [$center, $family]), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('validation');
+
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()->assertSee('<option value="N/A">N/A</option>', false)->assertSee("validated?'Validated'", false);
     }
 
     public function test_assigned_families_can_be_exported_using_the_current_filters(): void
@@ -121,14 +202,37 @@ class EvacuationCenterPayoutTest extends TestCase
             'street' => '101 Test Avenue', 'coordinator' => 'CSWD Coordinator',
             'assistant_coordinator' => 'CSWD Assistant Coordinator', 'capacity' => 25,
         ]);
+        EvacuationCenter::create([
+            'name' => 'North Test Coordinate Reference', 'barangay_id' => $existing->barangay_id,
+            'address' => '101 Test Avenue', 'capacity' => 25, 'status' => 'ACTIVE',
+            'is_active' => true, 'latitude' => 14.521234, 'longitude' => 121.051234,
+        ]);
         $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.store'), [
-            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $existing->disaster_id,
+            'cswdo_catalog_id' => $catalog->id, 'disaster_type' => 'Typhoon',
+            'date_opened' => '2026-09-20', 'disaster_title' => 'Typhoon Enteng',
         ])->assertCreated();
         $this->assertDatabaseHas('evacuation_centers', [
             'name' => 'North Test Center', 'address' => '101 Test Avenue',
             'contact_person' => 'CSWD Coordinator',
             'assistant_coordinator' => 'CSWD Assistant Coordinator', 'capacity' => 25,
+            'disaster_class_name' => 'Typhoon Enteng',
+            'latitude' => 14.521234, 'longitude' => 121.051234,
         ]);
+        $created = EvacuationCenter::where('name', 'North Test Center')->with('disaster')->firstOrFail();
+        $this->assertSame('2026-09-20', $created->date_opened->toDateString());
+        $this->assertSame('Typhoon Enteng', $created->disaster->name);
+        $this->assertSame('Typhoon', $created->disaster->type);
+
+        $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.store'), [
+            'cswdo_catalog_id' => $catalog->id, 'disaster_type' => 'Fire',
+            'date_opened' => '2026-09-20', 'disaster_title' => 'Fire Incident 2026',
+        ])->assertCreated();
+        $this->assertSame(2, EvacuationCenter::where('name', 'North Test Center')->count());
+
+        $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.store'), [
+            'cswdo_catalog_id' => $catalog->id, 'disaster_type' => 'Fire',
+            'date_opened' => '2026-09-20', 'disaster_title' => 'Fire Incident 2026',
+        ])->assertUnprocessable()->assertJsonValidationErrors('cswdo_catalog_id');
     }
 
     public function test_release_requires_a_photo(): void
@@ -142,10 +246,17 @@ class EvacuationCenterPayoutTest extends TestCase
     {
         Storage::fake('local');
         $release = PayoutRelease::where('status', 'Scheduled')->orderBy('id')->firstOrFail();
-        $data = $this->releaseData() + ['photo' => UploadedFile::fake()->image('beneficiary.jpg', 640, 480)];
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $data = $this->releaseData() + [
+            'photo' => UploadedFile::fake()->image('beneficiary.jpg', 640, 480),
+            'released_by' => $admin->id,
+        ];
         $this->actingAs($this->staff)->post(route('disaster.payouts.releases.release', $release), $data)
-            ->assertOk()->assertJsonPath('success', true);
-        $this->assertDatabaseHas('payout_releases', ['id' => $release->id, 'status' => 'Released']);
+            ->assertOk()->assertJsonPath('success', true)
+            ->assertJsonPath('data.released_by', $this->staff->name);
+        $this->assertDatabaseHas('payout_releases', [
+            'id' => $release->id, 'status' => 'Released', 'released_by' => $this->staff->id,
+        ]);
         $this->assertDatabaseHas('payout_releases', ['id' => $release->id, 'payout_photo_original_name' => 'beneficiary.jpg', 'payout_photo_mime_type' => 'image/jpeg']);
         $this->actingAs($this->staff)->postJson(route('disaster.payouts.releases.release', $release), $this->releaseData())
             ->assertConflict()->assertJsonPath('message', 'This payout has already been released.');

@@ -77,7 +77,7 @@
 
 @push('scripts')
 <script src="{{ asset('assets/plugins/custom/leaflet/leaflet.bundle.js') }}"></script>
-<script src="{{ asset('assets/js/evacuation-map.js') }}?v=4"></script>
+<script src="{{ asset('assets/js/evacuation-map.js') }}?v=7"></script>
 <script>
     window.addEventListener('pageshow', function (event) {
         if (event.persisted) window.location.reload();

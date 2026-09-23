@@ -83,7 +83,10 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::controller(EvacuationCenterController::class)->middleware('permission:manage payout schedules')->group(function () {
             Route::get('/payouts', 'index')->name('payouts.index');
+            Route::get('/payouts/evacuation-history', 'history')->middleware('role:admin|superadmin')->name('payouts.history');
+            Route::get('/payouts/evacuation-history/export', 'exportHistory')->middleware('role:admin|superadmin')->name('payouts.history.export');
             Route::post('/payouts/evacuation-centers', 'store')->name('payouts.centers.store');
+            Route::patch('/payouts/evacuation-centers/{center}/close', 'close')->middleware('role:admin|superadmin')->name('payouts.centers.close');
             Route::put('/payouts/evacuation-centers/{center}', 'update')->name('payouts.centers.update');
             Route::get('/payouts/evacuation-centers/{center}', 'show')->name('payouts.centers.show');
             Route::get('/payouts/evacuation-centers/{center}/families', 'families')->name('payouts.centers.families');

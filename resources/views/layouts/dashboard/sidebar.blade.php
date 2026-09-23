@@ -84,6 +84,16 @@
                     </div>
                 @endforeach
 
+                @if ($canManageAccounts && auth()->user()->can('manage payout schedules'))
+                    <div class="menu-item py-2">
+                        <a href="{{ route('disaster.payouts.history') }}" data-sidebar-route="disaster.payouts.history"
+                            class="menu-link menu-center flex-column {{ request()->routeIs('disaster.payouts.history') ? 'active' : '' }}" style="gap: 2px;">
+                            <span class="menu-icon me-0"><i class="ki-duotone ki-time fs-2x"><span class="path1"></span><span class="path2"></span></i></span>
+                            <span class="menu-title fs-7 text-center">Evacuation History</span>
+                        </a>
+                    </div>
+                @endif
+
                 @if ($canManageAccounts)
                     <div class="menu-item py-2">
                         <a href="{{ route('accounts.index') }}"

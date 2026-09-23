@@ -29,7 +29,7 @@ class DafacIntakeController extends Controller
             'page_title' => 'DAFAC Intake', 'page_description' => 'Encode household details and family composition.',
             'barangays' => Barangay::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'disasters' => Disaster::where('is_active', true)->latest('incident_date')->get(['id', 'name', 'type']),
-            'evacuationCenters' => EvacuationCenter::where('is_active', true)->orderBy('name')->get(['id', 'barangay_id', 'name']),
+            'evacuationCenters' => EvacuationCenter::createdCenters()->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get(['id', 'barangay_id', 'name']),
             'recentIntakes' => DafacRecord::with(['affectedFamily.barangay','affectedFamily.evacuationCenter','affectedFamily.tcissMasterlistRecord'])->latest()->limit(20)->get(),
         ]);
     }

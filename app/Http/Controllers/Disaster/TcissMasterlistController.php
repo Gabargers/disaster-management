@@ -50,7 +50,7 @@ class TcissMasterlistController extends Controller
             'page_description' => 'Verify affected families before DAFAC intake.',
             'records' => $records,
             'barangays' => \App\Models\Cms\Barangay::query()->where('is_active', true)->orderBy('name')->get(),
-            'evacuationCenters' => \App\Models\Disaster\EvacuationCenter::query()->where('is_active', true)->orderBy('name')->get(),
+            'evacuationCenters' => \App\Models\Disaster\EvacuationCenter::query()->createdCenters()->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get(),
             'disasters' => \App\Models\Disaster\Disaster::query()->orderByDesc('incident_date')->get(),
         ]);
     }

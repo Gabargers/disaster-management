@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Disaster;
 
 use App\Enums\FamilyStatus;
+use App\Exports\EvacuationHistoryExport;
+use App\Exports\EvacuationHistoryWorkbookExport;
 use App\Exports\EvacuationCenterFamiliesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Auth\User;
@@ -39,7 +41,7 @@ class EvacuationCenterController extends Controller
     public function __construct(private DisasterAssistanceWorkflowService $workflow, private DafacIntakeIntegrationService $integration) {}
     public function centersForBarangay(Request $request, Barangay $barangay): JsonResponse
     {
-        $query=$barangay->evacuationCenters()->orderBy('name');
+        $query=$barangay->evacuationCenters()->createdCenters()->orderBy('name');
         if (!$request->boolean('include_inactive') || !$request->user()->can('manage payout availability')) $query->where('is_active',true)->where('status','ACTIVE');
         if ($request->filled('disaster_id')) $query->where('disaster_id',$request->integer('disaster_id'));
         $centers=$query->with('activeAssignments.family.familyMembers')->get();
@@ -71,7 +73,7 @@ class EvacuationCenterController extends Controller
     {
         return view('disaster.payouts', [
             'page_title' => 'Evacuation Center', 'page_description' => 'Manage evacuation centers, beneficiaries, and payout releases.',
-            'centers' => EvacuationCenter::with(['barangay', 'disaster', 'payoutSessions' => fn ($q) => $q->latest('payout_date')])
+            'centers' => EvacuationCenter::createdCenters()->where('status', '!=', 'CLOSED')->with(['barangay', 'disaster', 'payoutSessions' => fn ($q) => $q->latest('payout_date')])
                 ->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])->orderBy('name')->get(),
             'barangays' => Barangay::where('is_active', true)->orderBy('name')->get(), 'disasters' => Disaster::orderByDesc('incident_date')->get(),
             'officers' => User::where('is_active', true)->orderBy('name')->get(),
@@ -83,25 +85,205 @@ class EvacuationCenterController extends Controller
         ]);
     }
 
+    public function history(Request $request)
+    {
+        [$rows, $columns, $selected, $incidentLabel, $closurePeriod] = $this->evacuationHistoryData($request);
+
+        return view('disaster.evacuation-history', [
+            'page_title' => 'Evacuation History',
+            'page_description' => 'Review closed evacuation centers and their operational records.',
+            'rows' => $rows,
+            'columns' => $columns,
+            'selected' => $selected,
+            'checkedColumns' => $selected,
+            'incidentLabel' => $incidentLabel,
+            'closurePeriod' => $closurePeriod,
+            'disasters' => Disaster::whereHas('evacuationCenters', fn ($query) => $query->where('status', 'CLOSED'))->orderByDesc('incident_date')->get(),
+            'barangays' => Barangay::whereHas('evacuationCenters', fn ($query) => $query->where('status', 'CLOSED'))->orderBy('name')->get(),
+            'centerOptions' => EvacuationCenter::createdCenters()->where('status', 'CLOSED')->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    public function exportHistory(Request $request)
+    {
+        [$rows, $columns, $selected, $incidentLabel, $closurePeriod] = $this->evacuationHistoryData($request);
+        $payoutRows = PayoutRelease::query()
+            ->whereIn('evacuation_center_id', $rows->pluck('id'))
+            ->where('status', 'Released')
+            ->with(['center.disaster', 'affectedFamily.dafacRecord', 'releaser'])
+            ->orderByDesc('released_at')->get()
+            ->map(function (PayoutRelease $release) {
+                $photoPath = null;
+                if ($release->payout_photo_path && Storage::disk('local')->exists($release->payout_photo_path)) {
+                    $candidate = Storage::disk('local')->path($release->payout_photo_path);
+                    $photoPath = @getimagesize($candidate) !== false ? $candidate : null;
+                }
+
+                return [
+                    'center' => $release->center?->name ?: '—',
+                    'disaster_title' => $release->center?->disaster_class_name ?: ($release->center?->disaster?->name ?: '—'),
+                    'household' => $release->affectedFamily?->household_head_full_name ?: '—',
+                    'dafac_reference' => $release->affectedFamily?->dafacRecord?->reference_number ?: '—',
+                    'assistance' => $release->assistance_kind ?: '—',
+                    'amount' => (float) ($release->amount ?? 0),
+                    'released_at' => $release->released_at?->format('M d, Y h:i A') ?: '—',
+                    'released_by' => $release->releaser?->name ?: 'Unknown user',
+                    'caption' => $release->photo_caption ?: '—',
+                    'photo_path' => $photoPath,
+                ];
+            });
+
+        return Excel::download(
+            new EvacuationHistoryWorkbookExport($rows, $columns, $selected, $incidentLabel, $closurePeriod, $payoutRows),
+            'evacuation-center-history-'.now()->format('Y-m-d-His').'.xlsx'
+        );
+    }
+
+    private function evacuationHistoryData(Request $request): array
+    {
+        $request->validate([
+            'disaster_id' => ['nullable', 'integer', 'exists:disasters,id'],
+            'disaster_type' => ['nullable', Rule::in(['Earthquake', 'Fire', 'Typhoon', 'Flood'])],
+            'district' => ['nullable', 'string', 'max:50'],
+            'barangay_id' => ['nullable', 'integer', 'exists:barangays,id'],
+            'evacuation_center_id' => ['nullable', 'integer', 'exists:evacuation_centers,id'],
+            'closed_from' => ['nullable', 'date'],
+            'closed_to' => ['nullable', 'date', 'after_or_equal:closed_from'],
+            'columns' => ['nullable', 'array'],
+            'columns.*' => ['string'],
+        ]);
+
+        $columns = EvacuationHistoryExport::columns();
+        $selected = array_values(array_intersect(array_keys($columns), (array) $request->input('columns', array_keys($columns))));
+        if ($selected === []) {
+            $selected = array_keys($columns);
+        }
+
+        $centers = EvacuationCenter::createdCenters()->where('status', 'CLOSED')
+            ->with(['barangay', 'disaster', 'closedBy', 'assignments.family.familyMembers', 'unlinkedPersonAffecteds.familyMembers'])
+            ->when($request->filled('disaster_id'), fn ($query) => $query->where('disaster_id', $request->integer('disaster_id')))
+            ->when($request->filled('disaster_type'), fn ($query) => $query->whereHas('disaster', fn ($disaster) => $disaster->where('type', $request->input('disaster_type'))))
+            ->when($request->filled('district'), fn ($query) => $query->where(fn ($center) => $center->where('district', $request->input('district'))->orWhereHas('barangay', fn ($barangay) => $barangay->where('district', $request->input('district')))))
+            ->when($request->filled('barangay_id'), fn ($query) => $query->where('barangay_id', $request->integer('barangay_id')))
+            ->when($request->filled('evacuation_center_id'), fn ($query) => $query->whereKey($request->integer('evacuation_center_id')))
+            ->when($request->filled('closed_from'), fn ($query) => $query->whereDate('closed_at', '>=', $request->input('closed_from')))
+            ->when($request->filled('closed_to'), fn ($query) => $query->whereDate('closed_at', '<=', $request->input('closed_to')))
+            ->latest('closed_at')->get();
+
+        $rows = $centers->map(function (EvacuationCenter $center) {
+            $families = $center->assignments->pluck('family')->filter()->unique('id')->values();
+            $externalFamilies = $center->unlinkedPersonAffecteds->unique('id')->values();
+            $familyCount = $families->count() + $externalFamilies->count();
+            $individualCount = $families->sum(fn ($family) => 1 + $family->familyMembers->count())
+                + $externalFamilies->sum(fn ($family) => 1 + $family->familyMembers->count());
+
+            return [
+                'id' => $center->id,
+                'center' => $center->name,
+                'disaster_title' => $center->disaster_class_name ?: ($center->disaster?->name ?: '—'),
+                'disaster_type' => $center->disaster?->type ?: '—',
+                'district' => $center->district ?: ($center->barangay?->district ?: '—'),
+                'barangay' => $center->barangay?->name ?: '—',
+                'address' => $center->address ?: '—',
+                'capacity' => (int) $center->capacity,
+                'families_recorded' => $familyCount,
+                'individuals_recorded' => $individualCount,
+                'date_opened' => $center->date_opened?->format('M d, Y') ?: $center->created_at?->format('M d, Y'),
+                'closed_at' => $center->closed_at?->format('M d, Y h:i A') ?: '—',
+                'closed_by' => $center->closedBy?->name ?: 'Unknown user',
+                'closure_notes' => $center->closure_notes ?: '—',
+            ];
+        });
+
+        $incident = $request->filled('disaster_id') ? Disaster::find($request->integer('disaster_id')) : null;
+        $incidentLabel = $incident?->name ?: ($request->input('disaster_type') ?: 'All Disaster Events');
+        $closurePeriod = ($request->filled('closed_from') ? $request->date('closed_from')->format('M d, Y') : 'All Dates')
+            .' to '.($request->filled('closed_to') ? $request->date('closed_to')->format('M d, Y') : 'Present');
+
+        return [$rows, $columns, $selected, $incidentLabel, $closurePeriod];
+    }
+
+    public function close(Request $request, EvacuationCenter $center): JsonResponse
+    {
+        $data = $request->validate(['closure_notes' => ['required', 'string', 'max:1000']]);
+        if ($center->status === 'CLOSED') {
+            return response()->json(['success' => true, 'message' => 'This evacuation center is already closed.']);
+        }
+
+        DB::transaction(function () use ($center, $data, $request) {
+            $center = EvacuationCenter::lockForUpdate()->findOrFail($center->id);
+            $oldValues = ['status' => $center->status, 'payout_availability' => $center->payout_availability, 'is_active' => $center->is_active];
+            $center->payoutSessions()->where('status', 'OPEN')->update(['status' => 'CLOSED']);
+            $center->update([
+                'status' => 'CLOSED', 'is_active' => false, 'payout_availability' => 'NOT_AVAILABLE',
+                'closed_at' => now(), 'closed_by' => $request->user()->id,
+                'closure_notes' => $data['closure_notes'], 'updated_by' => $request->user()->id,
+            ]);
+            AuditLog::create([
+                'user_id' => $request->user()->id, 'auditable_type' => $center::class, 'auditable_id' => $center->id,
+                'action' => 'evacuation_center_closed', 'old_values' => $oldValues,
+                'new_values' => ['status' => 'CLOSED', 'closure_notes' => $data['closure_notes']],
+                'ip_address' => $request->ip(), 'user_agent' => $request->userAgent(),
+            ]);
+        });
+
+        return response()->json(['success' => true, 'message' => 'Evacuation center closed and moved to Evacuation History.']);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $request->validate([
             'cswdo_catalog_id' => ['required', 'integer', 'exists:cswdo_evacuation_center_catalog,id'],
-            'disaster_id' => ['required', 'exists:disasters,id'],
+            'disaster_type' => ['required', Rule::in(['Earthquake', 'Fire', 'Typhoon', 'Flood'])],
+            'disaster_title' => ['required', 'string', 'max:255'],
+            'date_opened' => ['required', 'date', 'before_or_equal:today'],
             'description' => ['nullable', 'string', 'max:2000'],
         ]);
         $catalog = CswdoEvacuationCenter::whereNotNull('barangay_id')->findOrFail($request->integer('cswdo_catalog_id'));
         if (! $catalog->capacity) {
             throw ValidationException::withMessages(['cswdo_catalog_id' => 'The selected CSWDO center has no capacity in the official workbook.']);
         }
+        $disasterTitle = trim((string) $request->input('disaster_title'));
+        $incidentDate = $request->date('date_opened')->toDateString();
+        $disaster = Disaster::where('name', $disasterTitle)
+            ->where('type', $request->input('disaster_type'))
+            ->whereDate('incident_date', $incidentDate)
+            ->first() ?? Disaster::create([
+                'name' => $disasterTitle,
+                'type' => $request->input('disaster_type'),
+                'incident_date' => $incidentDate,
+                'is_active' => true,
+            ]);
+        if (EvacuationCenter::where('barangay_id', $catalog->barangay_id)
+            ->where('name', $catalog->name)
+            ->where('disaster_id', $disaster->id)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'cswdo_catalog_id' => 'This evacuation center has already been created for the selected disaster event.',
+            ]);
+        }
         $data = [
-            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $request->integer('disaster_id'),
+            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $disaster->id,
             'barangay_id' => $catalog->barangay_id, 'district' => $catalog->district,
             'name' => $catalog->name, 'address' => $catalog->street,
             'contact_person' => $catalog->coordinator, 'assistant_coordinator' => $catalog->assistant_coordinator,
             'capacity' => $catalog->capacity, 'description' => $request->input('description'),
+            'date_opened' => $request->date('date_opened')->toDateString(),
+            'disaster_class_name' => $disasterTitle,
             'status' => 'ACTIVE', 'payout_availability' => 'NOT_AVAILABLE',
         ];
+        $coordinateSource = EvacuationCenter::query()
+            ->whereNull('disaster_id')
+            ->where('barangay_id', $catalog->barangay_id)
+            ->where(function ($query) use ($catalog) {
+                $query->whereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper(trim($catalog->name))])
+                    ->orWhereRaw('UPPER(TRIM(address)) = ?', [mb_strtoupper(trim($catalog->street))]);
+            })
+            ->whereNotNull('latitude')->whereNotNull('longitude')->first();
+        if ($coordinateSource) {
+            $data['latitude'] = $coordinateSource->latitude;
+            $data['longitude'] = $coordinateSource->longitude;
+        }
         $center = EvacuationCenter::create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id, 'is_active' => $data['status'] === 'ACTIVE']);
         return response()->json(['success' => true, 'message' => 'Evacuation center created.', 'data' => $center], 201);
     }
@@ -138,13 +320,15 @@ class EvacuationCenterController extends Controller
             + $apiFamilies->sum('family_members_count');
         $assigned = $assignments->count() + $apiFamilies->count();
         return view('disaster.evacuation-center-show', [
-            'page_title' => $center->name, 'page_description' => 'Assigned evacuees and beneficiary payout processing.',
+            'page_title' => $center->disaster_class_name ?: $center->disaster?->name ?: $center->name,
+            'page_description' => 'Evacuation Center: '.$center->name,
             'center' => $center, 'session' => $center->payoutSessions->first(),
             'summary' => ['families' => $assigned, 'evacuees' => $assigned + $additionalMembers, 'available' => max(0, (int) $center->capacity - ($assigned + $additionalMembers)), 'validated' => $assignments->filter(fn($assignment)=>$assignment->family->validationRecords->contains('status','Validated'))->count()],
             'disasters' => Disaster::orderByDesc('incident_date')->get(['id', 'name']),
             'officers' => User::permission('manage payout schedules')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'transferCenterOptions' => EvacuationCenter::where('disaster_id', $center->disaster_id)->whereKeyNot($center->id)->where('is_active', true)->where('status', 'ACTIVE')->with('barangay')->orderBy('name')->get()->map(fn($item)=>['id'=>$item->id,'name'=>$item->name,'barangay'=>$item->barangay?->name,'barangay_id'=>$item->barangay_id])->values(),
-            'canTransferFamilies' => request()->user()->hasAnyRole(['admin','superadmin']),
+            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->hasAnyRole(['admin','superadmin']),
+            'canCloseCenter' => request()->user()->hasAnyRole(['admin','superadmin']),
             'canManageAvailability' => false,
             'bfpCertificate' => $center->documents->first(),
         ]);
@@ -283,9 +467,12 @@ class EvacuationCenterController extends Controller
         abort_unless($personAffected->evacuation_center_id === $center->id, 404, 'This family is not assigned to this evacuation center.');
         $data = $request->validate([
             'housing_condition' => ['nullable', Rule::in(['Totally Damaged', 'Partially Damaged', 'Water Damage'])],
-            'health_condition' => ['nullable', Rule::in(['Dead', 'Injured', 'Missing', 'With Illness'])],
+            'health_condition' => ['nullable', Rule::in(['N/A', 'Dead', 'Injured', 'Missing', 'With Illness'])],
         ]);
         return DB::transaction(function () use ($data, $request, $center, $personAffected) {
+            if ($personAffected->affectedFamily?->validationRecords()->where('status', 'Validated')->exists()) {
+                throw ValidationException::withMessages(['validation' => 'This family has already been validated.']);
+            }
             $personAffected->update($data);
             $complete = filled($data['housing_condition'] ?? null) && filled($data['health_condition'] ?? null);
             $payoutDetailsUrl = null;
@@ -359,7 +546,7 @@ class EvacuationCenterController extends Controller
             'affected_family'=>['id'=>$family->id,'surname'=>$family->household_head_surname,'given_name'=>$family->household_head_given_name,'middle_name'=>$family->household_head_middle_name,'household_head'=>$family->household_head_full_name,'birthdate'=>$family->birthdate?->format('Y-m-d'),'age'=>$family->age,'occupation'=>$family->occupation,'monthly_income'=>$family->monthly_income,'contact_number'=>$family->contact_number,'address'=>$family->complete_address,'barangay'=>$family->barangay?->name,'family_members'=>$family->familyMembers->count(),'household_size'=>$family->familyMembers->count()+1,'housing_condition'=>$family->housing_condition,'house_ownership'=>$family->house_ownership,'health_condition'=>$family->health_condition,'validation_status'=>$family->validationRecords->contains('status','Validated')?'Validated':'For Validation','workflow_status'=>$family->status?->value??$family->status],
             'dafac'=>['reference'=>$family->dafacRecord?->reference_number],'tciss'=>['reference'=>$family->tcissMasterlistRecord?->source_reference],'evacuation_center'=>['id'=>$center->id,'name'=>$center->name],
             'family_members'=>$family->familyMembers->map(fn($m)=>['name'=>$m->name,'birthdate'=>$m->birthdate?->format('Y-m-d'),'age'=>$m->age,'relationship'=>$m->relationship_to_head,'sex'=>$m->sex,'occupation'=>$m->occupation,'health_condition'=>$m->health_condition,'remarks_code'=>$m->remarks_codes,'remarks_label'=>$m->remarks_label,'remarks_url'=>route('disaster.payouts.centers.families.members.remarks',[$center,$family,$m])]),
-            'payout'=>$payout?['id'=>$payout->id,'status'=>$payout->status,'assistance_kind'=>$payout->assistance_kind,'quantity'=>$payout->quantity,'amount'=>$payout->amount,'provider'=>$payout->provider,'notes'=>$payout->photo_caption,'payout_date'=>$session?->payout_date?->format('Y-m-d')??today()->format('Y-m-d'),'released_at'=>$payout->released_at?->toIso8601String(),'released_by'=>$payout->releaser?->name,'has_photo'=>(bool)$payout->payout_photo_path,'photo_url'=>$payout->payout_photo_path?route('disaster.payouts.releases.photo',$payout):null,'can_release'=>$validated&&$payout->status==='Scheduled'&&request()->user()->can('manage payout schedules')]:null,
+            'payout'=>$payout?['id'=>$payout->id,'status'=>$payout->status,'assistance_kind'=>$payout->assistance_kind,'quantity'=>$payout->quantity,'amount'=>$payout->amount,'provider'=>$payout->provider,'notes'=>$payout->photo_caption,'payout_date'=>$session?->payout_date?->format('Y-m-d')??today()->format('Y-m-d'),'released_at'=>$payout->released_at?->toIso8601String(),'released_by'=>$payout->releaser?->name??request()->user()->name,'has_photo'=>(bool)$payout->payout_photo_path,'photo_url'=>$payout->payout_photo_path?route('disaster.payouts.releases.photo',$payout):null,'can_release'=>$validated&&$payout->status==='Scheduled'&&request()->user()->can('manage payout schedules')]:null,
             'defaults'=>['assistance_kind'=>$session?->assistance_type,'quantity'=>$session?->default_quantity,'amount'=>$session?->default_amount,'provider'=>$session?->provider,'payout_date'=>$session?->payout_date?->format('Y-m-d')],
             'availability'=>['status'=>$validated?'VALIDATED':'FOR_VALIDATION','can_process'=>$validated&&request()->user()->can('manage payout schedules')],
             'payout_history'=>$family->payoutReleases->map(fn($p)=>['status'=>$p->status,'assistance_kind'=>$p->assistance_kind,'amount'=>$p->amount,'provider'=>$p->provider,'released_at'=>$p->released_at?->toIso8601String(),'released_by'=>$p->releaser?->name]),
@@ -371,10 +558,13 @@ class EvacuationCenterController extends Controller
         abort_unless($center->activeAssignments()->where('affected_family_id', $family->id)->exists(), 404, 'This family is not currently assigned to the evacuation center.');
         $data = $request->validate([
             'house_ownership' => ['nullable', Rule::in(['Owner','Renter','Sharer'])],
-            'health_condition' => ['nullable', Rule::in(['Dead','Injured','Missing','With Illness'])],
+            'health_condition' => ['nullable', Rule::in(['N/A','Dead','Injured','Missing','With Illness'])],
             'housing_condition' => ['nullable', Rule::in(['Totally Damaged','Partially Damaged','Water Damage'])],
         ]);
         abort_if(collect($data)->filter(fn($value)=>filled($value))->isEmpty(), 422, 'Fill in at least one household condition before saving.');
+        if ($family->validationRecords()->where('status','Validated')->exists()) {
+            throw ValidationException::withMessages(['validation' => 'This family has already been validated.']);
+        }
 
         return DB::transaction(function () use ($data, $request, $family) {
             $old = $family->only(['house_ownership','health_condition','housing_condition']);

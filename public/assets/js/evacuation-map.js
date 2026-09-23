@@ -20,11 +20,15 @@
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
+    const barangayLocations = new Map();
+    const normalizeBarangay = function (value) { return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
     const boundaryLayer = L.geoJSON(null, {
         style: { color: '#7a1628', weight: 2, opacity: 0.9, fillColor: '#b64055', fillOpacity: 0.13 },
         onEachFeature: function (feature, layer) {
             const name = feature && feature.properties ? feature.properties.name : '';
             if (!name) return;
+            const center = layer.getBounds && layer.getBounds().getCenter();
+            if (center) barangayLocations.set(normalizeBarangay(name), center);
             const label = document.createElement('strong');
             label.textContent = name;
             layer.bindTooltip(label, { sticky: true, direction: 'top', className: 'barangay-tooltip' });
@@ -84,6 +88,7 @@
             detail('Barangay', center.barangay),
             detail('Capacity', center.capacity),
             detail('Status', center.status),
+            detail('Pin location', center.location_is_approximate ? 'Approximate barangay location' : 'Facility location'),
             detail('Families', center.family_count),
             detail('Individuals', center.individual_count)
         ].filter(Boolean).forEach(function (row) { panel.appendChild(row); });
@@ -132,9 +137,12 @@
             updateWallboard(payload.data || [], payload.updated_at);
             const locations = new Map();
             (payload.data || []).forEach(function (center) {
-                const latitude = Number(center.latitude);
-                const longitude = Number(center.longitude);
+                const fallback = barangayLocations.get(normalizeBarangay(center.barangay));
+                const missingCoordinates = center.latitude === null || center.longitude === null || center.latitude === '' || center.longitude === '';
+                const latitude = missingCoordinates && fallback ? fallback.lat : Number(center.latitude);
+                const longitude = missingCoordinates && fallback ? fallback.lng : Number(center.longitude);
                 if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+                center.location_is_approximate = missingCoordinates;
                 const key = latitude.toFixed(7) + ',' + longitude.toFixed(7);
                 if (!locations.has(key)) locations.set(key, { latitude: latitude, longitude: longitude, centers: [] });
                 locations.get(key).centers.push(center);
@@ -214,8 +222,10 @@
         }
     };
 
-    loadBoundaries();
-    loadCenters();
+    (async function initializeMapData() {
+        await loadBoundaries();
+        await loadCenters();
+    })();
     const finishLoading = function () {
         window.requestAnimationFrame(function () {
             map.invalidateSize(false);

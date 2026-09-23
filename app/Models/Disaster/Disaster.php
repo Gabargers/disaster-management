@@ -26,4 +26,9 @@ class Disaster extends Model
     {
         return $this->hasMany(PayoutSchedule::class);
     }
+
+    public function evacuationCenters(): HasMany
+    {
+        return $this->hasMany(EvacuationCenter::class);
+    }
 }

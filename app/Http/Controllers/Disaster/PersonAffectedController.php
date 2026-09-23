@@ -84,7 +84,7 @@ class PersonAffectedController extends Controller
         $familyMembers = $requestedMemberControl !== ''
             ? $personAffected->familyMembers->where('control_number', $requestedMemberControl)->values()
             : $personAffected->familyMembers;
-        $centers = EvacuationCenter::query()->with('barangay')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])
+        $centers = EvacuationCenter::query()->createdCenters()->with('barangay')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])
             ->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get();
 
         return response()->json(['data' => [
@@ -141,7 +141,7 @@ class PersonAffectedController extends Controller
     public function assignEvacuationCenter(Request $request, PersonAffected $personAffected): JsonResponse
     {
         $data = $request->validate(['evacuation_center_id' => ['required', 'integer', 'exists:evacuation_centers,id']]);
-        $center = EvacuationCenter::query()->whereKey($data['evacuation_center_id'])
+        $center = EvacuationCenter::query()->createdCenters()->whereKey($data['evacuation_center_id'])
             ->where('is_active', true)->where('status', 'ACTIVE')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])->first();
 
         if (! $center) {

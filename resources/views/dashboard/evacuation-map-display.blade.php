@@ -52,6 +52,6 @@
         data-centers-url="{{ route('evacuation-map.centers') }}"
         aria-label="Fullscreen Taguig barangay and evacuation center map"></main>
     <script src="{{ asset('assets/plugins/custom/leaflet/leaflet.bundle.js') }}"></script>
-    <script src="{{ asset('assets/js/evacuation-map.js') }}?v=6"></script>
+    <script src="{{ asset('assets/js/evacuation-map.js') }}?v=7"></script>
 </body>
 </html>
