@@ -73,11 +73,6 @@ class PersonAffectedPageTest extends TestCase
             'family_head_name' => 'JUAN FAMILY HEAD', 'family_head_control_number' => 'FAMILY-A1',
             'relationship' => 'Daughter',
         ]);
-        $head->familyMembers()->create([
-            'control_number' => 'FAMILY-A2', 'full_name' => 'MARIA FAMILY MEMBER',
-            'relationship' => 'Daughter',
-        ]);
-
         $this->actingAs($user)->get(route('disaster.person-affecteds.index'))
             ->assertOk()
             ->assertSee('FAMILY-A1')
@@ -101,6 +96,58 @@ class PersonAffectedPageTest extends TestCase
             ->assertJsonPath('data.full_name', 'JUAN FAMILY HEAD')
             ->assertJsonCount(1, 'data.family_members')
             ->assertJsonPath('data.family_members.0.control_number', 'FAMILY-A2');
+
+        $this->assertDatabaseCount('person_affected_family_members', 0);
+    }
+
+    public function test_one_table_tciss_family_composition_flows_through_the_evacuation_center(): void
+    {
+        $this->seed(DisasterRoleSeeder::class);
+        $user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $user->givePermissionTo('manage payout schedules');
+        $barangay = Barangay::create(['name' => 'One Table Barangay', 'code' => 'OT-01', 'district' => 'District 1', 'is_active' => true]);
+        $disaster = Disaster::create(['name' => 'One Table Incident', 'type' => 'Flood', 'incident_date' => today(), 'is_active' => true]);
+        $center = EvacuationCenter::create([
+            'name' => 'One Table Center', 'barangay_id' => $barangay->id, 'disaster_id' => $disaster->id,
+            'address' => 'Center Address', 'capacity' => 100, 'status' => 'ACTIVE',
+            'payout_availability' => 'NOT_AVAILABLE', 'is_active' => true,
+        ]);
+        $head = PersonAffected::create([
+            'control_number' => 'ONE-TABLE-A1', 'full_name' => 'ONE TABLE HEAD',
+            'family_head_name' => 'ONE TABLE HEAD', 'family_head_control_number' => 'ONE-TABLE-A1',
+            'relationship' => 'Family Head', 'age' => 40, 'sex' => 'Male', 'housing' => 'Owner',
+            'barangay' => $barangay->name, 'evacuation_center_id' => $center->id,
+            'evacuation_center_assigned_by' => $user->id, 'evacuation_center_assigned_at' => now(),
+        ]);
+        $member = PersonAffected::create([
+            'control_number' => 'ONE-TABLE-A2', 'full_name' => 'ONE TABLE MEMBER',
+            'family_head_name' => 'ONE TABLE HEAD', 'family_head_control_number' => 'ONE-TABLE-A1',
+            'relationship' => 'Daughter', 'age' => 12, 'sex' => 'Female', 'code' => 'PWD',
+            'barangay' => $barangay->name,
+        ]);
+
+        $this->actingAs($user)->getJson(route('disaster.payouts.centers.families', $center))
+            ->assertOk()
+            ->assertJsonPath('data.0.household_head', 'ONE TABLE HEAD')
+            ->assertJsonPath('data.0.family_members', 1)
+            ->assertJsonPath('data.0.household_size', 2);
+
+        $this->actingAs($user)->getJson(route('disaster.payouts.centers.tciss-families.details', [$center, $head]))
+            ->assertOk()
+            ->assertJsonPath('data.affected_family.household_head', 'ONE TABLE HEAD')
+            ->assertJsonCount(1, 'data.family_members')
+            ->assertJsonPath('data.family_members.0.name', 'ONE TABLE MEMBER')
+            ->assertJsonPath('data.family_members.0.relationship', 'Daughter');
+
+        $this->actingAs($user)->patchJson(route('disaster.payouts.centers.tciss-families.conditions', [$center, $head]), [
+            'housing_condition' => 'Partially Damaged',
+            'health_condition' => 'N/A',
+        ])->assertOk()->assertJsonPath('data.validation_status', 'Validated');
+
+        $this->assertDatabaseHas('family_members', [
+            'name' => $member->full_name, 'relationship_to_head' => 'Daughter', 'remarks_codes' => 'PWD',
+        ]);
+        $this->assertDatabaseCount('person_affected_family_members', 0);
     }
 
     public function test_person_can_only_be_assigned_after_an_active_evacuation_center_exists(): void

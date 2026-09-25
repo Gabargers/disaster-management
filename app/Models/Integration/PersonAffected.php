@@ -50,6 +50,19 @@ class PersonAffected extends Model
         return $this->hasMany(PersonAffectedFamilyMember::class);
     }
 
+    /**
+     * Family composition received from TCISS.
+     *
+     * TCISS sends one resident per API request, so both the household head and
+     * their members live in person_affecteds. Members point back to the head's
+     * control number through family_head_control_number.
+     */
+    public function householdMembers(): HasMany
+    {
+        return $this->hasMany(self::class, 'family_head_control_number', 'control_number')
+            ->whereColumn('person_affecteds.control_number', '!=', 'person_affecteds.family_head_control_number');
+    }
+
     public function evacuationCenter(): BelongsTo
     {
         return $this->belongsTo(EvacuationCenter::class);

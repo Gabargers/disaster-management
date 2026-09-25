@@ -3,14 +3,16 @@
 namespace Tests\Feature\Disaster;
 
 use App\Models\Auth\User;
-use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\CswdoEvacuationCenter;
+use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\PayoutRelease;
+use App\Models\Disaster\PostPayoutRequirement;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 class EvacuationCenterPayoutTest extends TestCase
@@ -49,15 +51,27 @@ class EvacuationCenterPayoutTest extends TestCase
         ]);
         $this->actingAs($this->staff)->get(route('disaster.payouts.index'))->assertOk()->assertDontSee($center->name);
         $this->actingAs($admin)->get(route('disaster.payouts.history'))->assertOk()
-            ->assertSee($center->name)->assertSee('All families have returned home safely.')
-            ->assertSee('Configure Evacuation History')->assertSee('Export Excel')
-            ->assertSee('Individuals Recorded');
+            ->assertSee($center->name)->assertSee('Select a closed evacuation center')
+            ->assertDontSee('Juan Santos Dela Cruz');
+        $this->actingAs($admin)->get(route('disaster.payouts.history', ['evacuation_center_id' => $center->id]))
+            ->assertOk()->assertSee('All families have returned home safely.')
+            ->assertSee('Juan Santos Dela Cruz')->assertSee('Ana Dela Cruz')
+            ->assertSee('Family Composition')->assertSee('Export Masterlist');
         $export = $this->actingAs($admin)->get(route('disaster.payouts.history.export', [
-            'disaster_id' => $center->disaster_id,
-            'columns' => ['center', 'disaster_title', 'families_recorded', 'individuals_recorded', 'closed_at'],
+            'evacuation_center_id' => $center->id,
         ]));
         $export->assertOk()->assertDownload();
         $workbook = $export->streamedContent();
+        $path = tempnam(sys_get_temp_dir(), 'history-masterlist-');
+        file_put_contents($path, $workbook);
+        $spreadsheet = IOFactory::load($path);
+        unlink($path);
+        $this->assertCount(2, $spreadsheet->getAllSheets());
+        $this->assertSame('Family Masterlist', $spreadsheet->getSheet(0)->getTitle());
+        $masterlistText = collect($spreadsheet->getSheet(0)->toArray())->flatten()->implode(' ');
+        $this->assertStringContainsString('Juan Santos Dela Cruz', $masterlistText);
+        $this->assertStringContainsString('Ana Dela Cruz', $masterlistText);
+        $this->assertStringContainsString('Household Head', $masterlistText);
         $this->assertStringContainsString('xl/worksheets/sheet2.xml', $workbook);
         $this->assertStringContainsString('xl/media/', $workbook);
         $this->actingAs($this->staff)->getJson(route('evacuation-map.centers'))->assertOk()
@@ -83,6 +97,18 @@ class EvacuationCenterPayoutTest extends TestCase
         ])->assertForbidden();
         $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
             ->assertOk()->assertDontSee('Close Center');
+    }
+
+    public function test_history_export_requires_a_selected_closed_center(): void
+    {
+        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $activeCenter = EvacuationCenter::where('status', 'ACTIVE')->firstOrFail();
+
+        $this->actingAs($admin)->get(route('disaster.payouts.history.export'))
+            ->assertSessionHasErrors('evacuation_center_id');
+        $this->actingAs($admin)->get(route('disaster.payouts.history.export', [
+            'evacuation_center_id' => $activeCenter->id,
+        ]))->assertSessionHasErrors('evacuation_center_id');
     }
 
     public function test_open_navigates_to_dedicated_center_page_with_live_totals(): void
@@ -157,14 +183,14 @@ class EvacuationCenterPayoutTest extends TestCase
     {
         $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
         $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
-        $response = $this->actingAs($this->staff)->get(route('disaster.payouts.centers.families.export', [$center, 'search'=>$family->household_head_given_name]));
+        $response = $this->actingAs($this->staff)->get(route('disaster.payouts.centers.families.export', [$center, 'search' => $family->household_head_given_name]));
 
         $response->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         $content = $response->streamedContent();
         $this->assertStringStartsWith('PK', $content);
         $path = tempnam(sys_get_temp_dir(), 'center-export-');
         file_put_contents($path, $content);
-        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
+        $sheet = IOFactory::load($path)->getActiveSheet();
         unlink($path);
         $workbookText = collect($sheet->toArray())->flatten()->implode(' ');
         $this->assertStringContainsString($family->household_head_full_name, $workbookText);
@@ -175,15 +201,15 @@ class EvacuationCenterPayoutTest extends TestCase
     {
         $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
         $assignment = $center->activeAssignments()->whereDoesntHave('family.payoutReleases', fn ($query) => $query->where('status', 'Released'))->with('family')->firstOrFail();
-        $target = EvacuationCenter::create(['uuid'=>(string)Str::uuid(),'disaster_id'=>$center->disaster_id,'barangay_id'=>$center->barangay_id,'district'=>$center->district,'name'=>'Transfer Test Center','capacity'=>100,'status'=>'ACTIVE','is_active'=>true]);
+        $target = EvacuationCenter::create(['uuid' => (string) Str::uuid(), 'disaster_id' => $center->disaster_id, 'barangay_id' => $center->barangay_id, 'district' => $center->district, 'name' => 'Transfer Test Center', 'capacity' => 100, 'status' => 'ACTIVE', 'is_active' => true]);
 
         $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))->assertOk()->assertViewHas('canTransferFamilies', false);
         $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
         $this->actingAs($admin)->get(route('disaster.payouts.centers.show', $center))->assertOk()->assertViewHas('canTransferFamilies', true)->assertSee('Transfer Evacuation Center');
-        $this->actingAs($admin)->patchJson(route('disaster.payouts.centers.families.transfer', [$center, $assignment->family]), ['evacuation_center_id'=>$target->id,'reason'=>'Transferred for capacity balancing.'])->assertOk();
+        $this->actingAs($admin)->patchJson(route('disaster.payouts.centers.families.transfer', [$center, $assignment->family]), ['evacuation_center_id' => $target->id, 'reason' => 'Transferred for capacity balancing.'])->assertOk();
 
-        $this->assertDatabaseHas('affected_families', ['id'=>$assignment->affected_family_id,'evacuation_center_id'=>$target->id]);
-        $this->assertDatabaseHas('evacuation_center_assignments', ['id'=>$assignment->id,'status'=>'TRANSFERRED']);
+        $this->assertDatabaseHas('affected_families', ['id' => $assignment->affected_family_id, 'evacuation_center_id' => $target->id]);
+        $this->assertDatabaseHas('evacuation_center_assignments', ['id' => $assignment->id, 'status' => 'TRANSFERRED']);
     }
 
     public function test_bagumbayan_center_returns_its_five_connected_sample_families(): void
@@ -351,7 +377,7 @@ class EvacuationCenterPayoutTest extends TestCase
         ])->assertOk()->assertJsonPath('data.valid_id_name', 'household-head-id.jpg');
 
         $this->assertDatabaseHas('uploaded_documents', [
-            'documentable_type' => \App\Models\Disaster\PostPayoutRequirement::class,
+            'documentable_type' => PostPayoutRequirement::class,
             'document_type' => 'valid_id_document', 'original_name' => 'household-head-id.jpg',
         ]);
     }

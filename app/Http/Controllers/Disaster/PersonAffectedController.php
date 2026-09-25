@@ -18,8 +18,8 @@ class PersonAffectedController extends Controller
         $status = trim((string) $request->query('status'));
 
         $families = PersonAffected::query()
-            ->with(['latestStatus', 'evacuationCenter', 'familyMembers'])
-            ->withCount(['statuses', 'familyMembers'])
+            ->with(['latestStatus', 'evacuationCenter', 'householdMembers'])
+            ->withCount(['statuses', 'householdMembers'])
             ->familyHeads()
             ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
                 foreach ([
@@ -29,7 +29,7 @@ class PersonAffectedController extends Controller
                 ] as $column) {
                     $query->orWhere($column, 'like', '%'.$search.'%');
                 }
-                $query->orWhereHas('familyMembers', fn ($memberQuery) => $memberQuery
+                $query->orWhereHas('householdMembers', fn ($memberQuery) => $memberQuery
                     ->where('control_number', 'like', '%'.$search.'%')
                     ->orWhere('full_name', 'like', '%'.$search.'%'));
             }))
@@ -57,7 +57,7 @@ class PersonAffectedController extends Controller
                     || str_contains(mb_strtolower((string) $person->full_name), $needle);
 
                 if (! $headMatches) {
-                    $matchedMember = $person->familyMembers->first(fn ($member) =>
+                    $matchedMember = $person->householdMembers->first(fn ($member) =>
                         str_contains(mb_strtolower((string) $member->control_number), $needle)
                         || str_contains(mb_strtolower((string) $member->full_name), $needle)
                     );
@@ -79,11 +79,11 @@ class PersonAffectedController extends Controller
 
     public function show(PersonAffected $personAffected): JsonResponse
     {
-        $personAffected->load(['latestStatus', 'statuses' => fn ($query) => $query->latest('date_tagged'), 'familyMembers', 'evacuationCenter.barangay', 'evacuationCenterAssigner']);
+        $personAffected->load(['latestStatus', 'statuses' => fn ($query) => $query->latest('date_tagged'), 'householdMembers', 'evacuationCenter.barangay', 'evacuationCenterAssigner']);
         $requestedMemberControl = trim((string) request()->query('member_control_number'));
         $familyMembers = $requestedMemberControl !== ''
-            ? $personAffected->familyMembers->where('control_number', $requestedMemberControl)->values()
-            : $personAffected->familyMembers;
+            ? $personAffected->householdMembers->where('control_number', $requestedMemberControl)->values()
+            : $personAffected->householdMembers;
         $centers = EvacuationCenter::query()->createdCenters()->with('barangay')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])
             ->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get();
 
@@ -129,8 +129,10 @@ class PersonAffectedController extends Controller
                 'control_number' => $member->control_number, 'full_name' => $member->full_name,
                 'relationship' => $member->relationship, 'age' => $member->age, 'sex' => $member->sex,
                 'code' => $member->code, 'housing' => $member->housing,
-                'district' => $personAffected->district, 'barangay' => $personAffected->barangay,
-                'street' => $personAffected->street, 'city' => $personAffected->city,
+                'district' => $member->district ?: $personAffected->district,
+                'barangay' => $member->barangay ?: $personAffected->barangay,
+                'street' => $member->street ?: $personAffected->street,
+                'city' => $member->city ?: $personAffected->city,
             ])->values(),
             'status_history' => $personAffected->statuses->map(fn ($event) => [
                 'status' => $event->status, 'date_tagged' => $event->date_tagged?->toIso8601String(),

@@ -3,18 +3,17 @@
 namespace App\Http\Controllers\Disaster;
 
 use App\Enums\FamilyStatus;
-use App\Exports\EvacuationHistoryExport;
-use App\Exports\EvacuationHistoryWorkbookExport;
 use App\Exports\EvacuationCenterFamiliesExport;
+use App\Exports\EvacuationHistoryWorkbookExport;
 use App\Http\Controllers\Controller;
 use App\Models\Auth\User;
 use App\Models\Cms\Barangay;
 use App\Models\Disaster\AffectedFamily;
 use App\Models\Disaster\AuditLog;
-use App\Models\Disaster\Disaster;
-use App\Models\Disaster\DafacRecord;
-use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\CswdoEvacuationCenter;
+use App\Models\Disaster\DafacRecord;
+use App\Models\Disaster\Disaster;
+use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\EvacuationCenterAssignment;
 use App\Models\Disaster\EvacuationCenterPayoutSession;
 use App\Models\Disaster\FamilyMember;
@@ -23,9 +22,8 @@ use App\Models\Disaster\PayoutSchedule;
 use App\Models\Disaster\PostPayoutRequirement;
 use App\Models\Disaster\ValidationRecord;
 use App\Models\Integration\PersonAffected;
-use App\Models\Integration\PersonAffectedFamilyMember;
-use App\Services\Disaster\DisasterAssistanceWorkflowService;
 use App\Services\Disaster\DafacIntakeIntegrationService;
+use App\Services\Disaster\DisasterAssistanceWorkflowService;
 use App\Support\MemberRemark;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,36 +37,50 @@ use Maatwebsite\Excel\Facades\Excel;
 class EvacuationCenterController extends Controller
 {
     public function __construct(private DisasterAssistanceWorkflowService $workflow, private DafacIntakeIntegrationService $integration) {}
+
     public function centersForBarangay(Request $request, Barangay $barangay): JsonResponse
     {
-        $query=$barangay->evacuationCenters()->createdCenters()->orderBy('name');
-        if (!$request->boolean('include_inactive') || !$request->user()->can('manage payout availability')) $query->where('is_active',true)->where('status','ACTIVE');
-        if ($request->filled('disaster_id')) $query->where('disaster_id',$request->integer('disaster_id'));
-        $centers=$query->with('activeAssignments.family.familyMembers')->get();
-        return response()->json(['success'=>true,'data'=>$centers->map(function($center)use($request){$occupied=$center->activeAssignments->sum(fn($assignment)=>1+$assignment->family->familyMembers->count());$available=max(0,$center->capacity-$occupied);return ['id'=>$center->id,'name'=>$center->name,'address'=>$center->address,'status'=>$center->status,'capacity'=>$center->capacity,'disaster_id'=>$center->disaster_id,'occupied_count'=>$occupied,'available_slots'=>$available,'is_full'=>$available===0,'can_override'=>$request->user()->can('evacuation_center.capacity_override')];})]);
+        $query = $barangay->evacuationCenters()->createdCenters()->orderBy('name');
+        if (! $request->boolean('include_inactive') || ! $request->user()->can('manage payout availability')) {
+            $query->where('is_active', true)->where('status', 'ACTIVE');
+        }
+        if ($request->filled('disaster_id')) {
+            $query->where('disaster_id', $request->integer('disaster_id'));
+        }
+        $centers = $query->with('activeAssignments.family.familyMembers')->get();
+
+        return response()->json(['success' => true, 'data' => $centers->map(function ($center) use ($request) {
+            $occupied = $center->activeAssignments->sum(fn ($assignment) => 1 + $assignment->family->familyMembers->count());
+            $available = max(0, $center->capacity - $occupied);
+
+            return ['id' => $center->id, 'name' => $center->name, 'address' => $center->address, 'status' => $center->status, 'capacity' => $center->capacity, 'disaster_id' => $center->disaster_id, 'occupied_count' => $occupied, 'available_slots' => $available, 'is_full' => $available === 0, 'can_override' => $request->user()->can('evacuation_center.capacity_override')];
+        })]);
     }
 
     public function reassignFamily(Request $request, EvacuationCenter $center, AffectedFamily $family): JsonResponse
     {
-        $data=$request->validate(['evacuation_center_id'=>['required','integer','exists:evacuation_centers,id'],'reason'=>['required','string','max:1000']]);
+        $data = $request->validate(['evacuation_center_id' => ['required', 'integer', 'exists:evacuation_centers,id'], 'reason' => ['required', 'string', 'max:1000']]);
         abort_unless($center->activeAssignments()->where('affected_family_id', $family->id)->exists(), 404, 'This family is not currently assigned to this evacuation center.');
         abort_if($center->id === (int) $data['evacuation_center_id'], 422, 'Select a different evacuation center.');
-        $assignment=$this->integration->reassign($family,$data['evacuation_center_id'],$request->user(),$data['reason']);
-        return response()->json(['success'=>true,'message'=>'Family transferred successfully.','data'=>$assignment->load('center')]);
+        $assignment = $this->integration->reassign($family, $data['evacuation_center_id'], $request->user(), $data['reason']);
+
+        return response()->json(['success' => true, 'message' => 'Family transferred successfully.', 'data' => $assignment->load('center')]);
     }
 
     public function reassignPersonAffected(Request $request, EvacuationCenter $center, PersonAffected $personAffected): JsonResponse
     {
-        abort_unless($personAffected->evacuation_center_id === $center->id && !$personAffected->affected_family_id, 404, 'This family is not currently assigned to this evacuation center.');
-        $data=$request->validate(['evacuation_center_id'=>['required','integer','exists:evacuation_centers,id'],'reason'=>['required','string','max:1000']]);
+        abort_unless($personAffected->evacuation_center_id === $center->id && ! $personAffected->affected_family_id, 404, 'This family is not currently assigned to this evacuation center.');
+        $data = $request->validate(['evacuation_center_id' => ['required', 'integer', 'exists:evacuation_centers,id'], 'reason' => ['required', 'string', 'max:1000']]);
         abort_if($center->id === (int) $data['evacuation_center_id'], 422, 'Select a different evacuation center.');
-        $target=EvacuationCenter::whereKey($data['evacuation_center_id'])->where('disaster_id',$center->disaster_id)->where('is_active',true)->where('status','ACTIVE')->firstOrFail();
-        $occupied=$target->activeAssignments()->count()+$target->unlinkedPersonAffecteds()->count();
-        abort_if($occupied >= (int)$target->capacity && !$request->user()->can('evacuation_center.capacity_override'),422,'The selected evacuation center is already at full capacity.');
-        $personAffected->update(['evacuation_center_id'=>$target->id,'evacuation_center_assigned_by'=>$request->user()->id,'evacuation_center_assigned_at'=>now()]);
-        AuditLog::create(['user_id'=>$request->user()->id,'auditable_type'=>$personAffected::class,'auditable_id'=>$personAffected->id,'action'=>'evacuation_center_reassigned','new_values'=>['old_center_id'=>$center->id,'evacuation_center_id'=>$target->id,'reason'=>$data['reason']],'ip_address'=>$request->ip(),'user_agent'=>$request->userAgent()]);
-        return response()->json(['success'=>true,'message'=>'Family transferred successfully.','data'=>['center'=>['id'=>$target->id,'name'=>$target->name]]]);
+        $target = EvacuationCenter::whereKey($data['evacuation_center_id'])->where('disaster_id', $center->disaster_id)->where('is_active', true)->where('status', 'ACTIVE')->firstOrFail();
+        $occupied = $target->activeAssignments()->count() + $target->unlinkedPersonAffecteds()->count();
+        abort_if($occupied >= (int) $target->capacity && ! $request->user()->can('evacuation_center.capacity_override'), 422, 'The selected evacuation center is already at full capacity.');
+        $personAffected->update(['evacuation_center_id' => $target->id, 'evacuation_center_assigned_by' => $request->user()->id, 'evacuation_center_assigned_at' => now()]);
+        AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $personAffected::class, 'auditable_id' => $personAffected->id, 'action' => 'evacuation_center_reassigned', 'new_values' => ['old_center_id' => $center->id, 'evacuation_center_id' => $target->id, 'reason' => $data['reason']], 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
+
+        return response()->json(['success' => true, 'message' => 'Family transferred successfully.', 'data' => ['center' => ['id' => $target->id, 'name' => $target->name]]]);
     }
+
     public function index()
     {
         return view('disaster.payouts', [
@@ -87,28 +99,49 @@ class EvacuationCenterController extends Controller
 
     public function history(Request $request)
     {
-        [$rows, $columns, $selected, $incidentLabel, $closurePeriod] = $this->evacuationHistoryData($request);
+        $request->validate(['evacuation_center_id' => ['nullable', 'integer']]);
+        $centerOptions = EvacuationCenter::createdCenters()->where('status', 'CLOSED')
+            ->with(['barangay', 'disaster'])->latest('closed_at')->orderBy('name')->get();
+        $selectedCenter = null;
+        $familyRows = collect();
+
+        if ($request->filled('evacuation_center_id')) {
+            $selectedCenter = $this->closedCenterQuery()
+                ->whereKey($request->integer('evacuation_center_id'))->first();
+
+            if (! $selectedCenter) {
+                throw ValidationException::withMessages([
+                    'evacuation_center_id' => 'Select a valid closed evacuation center.',
+                ]);
+            }
+
+            $familyRows = $this->closedCenterFamilyRows($selectedCenter);
+        }
 
         return view('disaster.evacuation-history', [
             'page_title' => 'Evacuation History',
-            'page_description' => 'Review closed evacuation centers and their operational records.',
-            'rows' => $rows,
-            'columns' => $columns,
-            'selected' => $selected,
-            'checkedColumns' => $selected,
-            'incidentLabel' => $incidentLabel,
-            'closurePeriod' => $closurePeriod,
-            'disasters' => Disaster::whereHas('evacuationCenters', fn ($query) => $query->where('status', 'CLOSED'))->orderByDesc('incident_date')->get(),
-            'barangays' => Barangay::whereHas('evacuationCenters', fn ($query) => $query->where('status', 'CLOSED'))->orderBy('name')->get(),
-            'centerOptions' => EvacuationCenter::createdCenters()->where('status', 'CLOSED')->orderBy('name')->get(['id', 'name']),
+            'page_description' => 'Review and export the family masterlist of closed evacuation centers.',
+            'centerOptions' => $centerOptions,
+            'selectedCenter' => $selectedCenter,
+            'familyRows' => $familyRows,
         ]);
     }
 
     public function exportHistory(Request $request)
     {
-        [$rows, $columns, $selected, $incidentLabel, $closurePeriod] = $this->evacuationHistoryData($request);
+        $request->validate(['evacuation_center_id' => ['required', 'integer']]);
+        $center = $this->closedCenterQuery()
+            ->whereKey($request->integer('evacuation_center_id'))->first();
+
+        if (! $center) {
+            throw ValidationException::withMessages([
+                'evacuation_center_id' => 'Select a valid closed evacuation center before exporting.',
+            ]);
+        }
+
+        $familyRows = $this->closedCenterFamilyRows($center);
         $payoutRows = PayoutRelease::query()
-            ->whereIn('evacuation_center_id', $rows->pluck('id'))
+            ->where('evacuation_center_id', $center->id)
             ->where('status', 'Released')
             ->with(['center.disaster', 'affectedFamily.dafacRecord', 'releaser'])
             ->orderByDesc('released_at')->get()
@@ -134,73 +167,86 @@ class EvacuationCenterController extends Controller
             });
 
         return Excel::download(
-            new EvacuationHistoryWorkbookExport($rows, $columns, $selected, $incidentLabel, $closurePeriod, $payoutRows),
-            'evacuation-center-history-'.now()->format('Y-m-d-His').'.xlsx'
+            new EvacuationHistoryWorkbookExport($center, $familyRows, $payoutRows),
+            'closed-center-masterlist-'.Str::slug($center->name).'-'.now()->format('Y-m-d-His').'.xlsx'
         );
     }
 
-    private function evacuationHistoryData(Request $request): array
+    private function closedCenterQuery()
     {
-        $request->validate([
-            'disaster_id' => ['nullable', 'integer', 'exists:disasters,id'],
-            'disaster_type' => ['nullable', Rule::in(['Earthquake', 'Fire', 'Typhoon', 'Flood'])],
-            'district' => ['nullable', 'string', 'max:50'],
-            'barangay_id' => ['nullable', 'integer', 'exists:barangays,id'],
-            'evacuation_center_id' => ['nullable', 'integer', 'exists:evacuation_centers,id'],
-            'closed_from' => ['nullable', 'date'],
-            'closed_to' => ['nullable', 'date', 'after_or_equal:closed_from'],
-            'columns' => ['nullable', 'array'],
-            'columns.*' => ['string'],
+        return EvacuationCenter::createdCenters()->where('status', 'CLOSED')->with([
+            'barangay', 'disaster', 'closedBy',
+            'assignments.family.barangay', 'assignments.family.familyMembers',
+            'assignments.family.tcissMasterlistRecord', 'assignments.family.dafacRecord',
+            'assignments.family.validationRecords',
+            'unlinkedPersonAffecteds.householdMembers', 'unlinkedPersonAffecteds.latestStatus',
         ]);
+    }
 
-        $columns = EvacuationHistoryExport::columns();
-        $selected = array_values(array_intersect(array_keys($columns), (array) $request->input('columns', array_keys($columns))));
-        if ($selected === []) {
-            $selected = array_keys($columns);
-        }
+    private function closedCenterFamilyRows(EvacuationCenter $center)
+    {
+        $assignedRows = $center->assignments->sortByDesc('assigned_at')->unique('affected_family_id')
+            ->pluck('family')->filter()->map(function (AffectedFamily $family) use ($center) {
+                $assignment = $center->assignments->where('affected_family_id', $family->id)
+                    ->sortByDesc('assigned_at')->first();
 
-        $centers = EvacuationCenter::createdCenters()->where('status', 'CLOSED')
-            ->with(['barangay', 'disaster', 'closedBy', 'assignments.family.familyMembers', 'unlinkedPersonAffecteds.familyMembers'])
-            ->when($request->filled('disaster_id'), fn ($query) => $query->where('disaster_id', $request->integer('disaster_id')))
-            ->when($request->filled('disaster_type'), fn ($query) => $query->whereHas('disaster', fn ($disaster) => $disaster->where('type', $request->input('disaster_type'))))
-            ->when($request->filled('district'), fn ($query) => $query->where(fn ($center) => $center->where('district', $request->input('district'))->orWhereHas('barangay', fn ($barangay) => $barangay->where('district', $request->input('district')))))
-            ->when($request->filled('barangay_id'), fn ($query) => $query->where('barangay_id', $request->integer('barangay_id')))
-            ->when($request->filled('evacuation_center_id'), fn ($query) => $query->whereKey($request->integer('evacuation_center_id')))
-            ->when($request->filled('closed_from'), fn ($query) => $query->whereDate('closed_at', '>=', $request->input('closed_from')))
-            ->when($request->filled('closed_to'), fn ($query) => $query->whereDate('closed_at', '<=', $request->input('closed_to')))
-            ->latest('closed_at')->get();
+                return [
+                    'id' => 'family-'.$family->id,
+                    'control_number' => $family->tcissMasterlistRecord?->source_reference
+                        ?: $family->dafacRecord?->reference_number,
+                    'household_head' => $family->household_head_full_name,
+                    'head' => [
+                        'name' => $family->household_head_full_name, 'relationship' => 'Household Head',
+                        'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age,
+                        'sex' => null, 'occupation' => $family->occupation,
+                        'health_condition' => $family->health_condition, 'remarks' => null,
+                    ],
+                    'members' => $family->familyMembers->map(fn (FamilyMember $member) => [
+                        'name' => $member->name, 'relationship' => $member->relationship_to_head,
+                        'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age,
+                        'sex' => $member->sex, 'occupation' => $member->occupation,
+                        'health_condition' => $member->health_condition, 'remarks' => $member->remarks_label,
+                    ])->values(),
+                    'address' => $family->complete_address,
+                    'barangay' => $family->barangay?->name,
+                    'housing_condition' => $family->housing_condition,
+                    'house_ownership' => $family->house_ownership,
+                    'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation',
+                    'workflow_status' => $family->status?->value ?? (string) $family->status,
+                    'assigned_at' => $assignment?->assigned_at,
+                    'household_size' => $family->familyMembers->count() + 1,
+                ];
+            });
 
-        $rows = $centers->map(function (EvacuationCenter $center) {
-            $families = $center->assignments->pluck('family')->filter()->unique('id')->values();
-            $externalFamilies = $center->unlinkedPersonAffecteds->unique('id')->values();
-            $familyCount = $families->count() + $externalFamilies->count();
-            $individualCount = $families->sum(fn ($family) => 1 + $family->familyMembers->count())
-                + $externalFamilies->sum(fn ($family) => 1 + $family->familyMembers->count());
-
+        $externalRows = $center->unlinkedPersonAffecteds->unique('id')->map(function (PersonAffected $family) {
             return [
-                'id' => $center->id,
-                'center' => $center->name,
-                'disaster_title' => $center->disaster_class_name ?: ($center->disaster?->name ?: '—'),
-                'disaster_type' => $center->disaster?->type ?: '—',
-                'district' => $center->district ?: ($center->barangay?->district ?: '—'),
-                'barangay' => $center->barangay?->name ?: '—',
-                'address' => $center->address ?: '—',
-                'capacity' => (int) $center->capacity,
-                'families_recorded' => $familyCount,
-                'individuals_recorded' => $individualCount,
-                'date_opened' => $center->date_opened?->format('M d, Y') ?: $center->created_at?->format('M d, Y'),
-                'closed_at' => $center->closed_at?->format('M d, Y h:i A') ?: '—',
-                'closed_by' => $center->closedBy?->name ?: 'Unknown user',
-                'closure_notes' => $center->closure_notes ?: '—',
+                'id' => 'person-'.$family->id,
+                'control_number' => $family->control_number,
+                'household_head' => $family->full_name,
+                'head' => [
+                    'name' => $family->full_name, 'relationship' => 'Household Head',
+                    'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age,
+                    'sex' => $family->sex, 'occupation' => $family->occupation,
+                    'health_condition' => $family->health_condition, 'remarks' => MemberRemark::label($family->code),
+                ],
+                'members' => $family->householdMembers->map(fn (PersonAffected $member) => [
+                    'name' => $member->full_name, 'relationship' => $member->relationship,
+                    'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex,
+                    'occupation' => $member->occupation, 'health_condition' => $member->health_condition,
+                    'remarks' => MemberRemark::label($member->code),
+                ])->values(),
+                'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '),
+                'barangay' => $family->barangay,
+                'housing_condition' => $family->housing_condition,
+                'house_ownership' => $family->housing,
+                'validation_status' => 'For Validation',
+                'workflow_status' => $family->latestStatus?->status ?: 'Affected',
+                'assigned_at' => $family->evacuation_center_assigned_at,
+                'household_size' => $family->householdMembers->count() + 1,
             ];
         });
 
-        $incident = $request->filled('disaster_id') ? Disaster::find($request->integer('disaster_id')) : null;
-        $incidentLabel = $incident?->name ?: ($request->input('disaster_type') ?: 'All Disaster Events');
-        $closurePeriod = ($request->filled('closed_from') ? $request->date('closed_from')->format('M d, Y') : 'All Dates')
-            .' to '.($request->filled('closed_to') ? $request->date('closed_to')->format('M d, Y') : 'Present');
-
-        return [$rows, $columns, $selected, $incidentLabel, $closurePeriod];
+        return $assignedRows->concat($externalRows)->sortBy('household_head')->values();
     }
 
     public function close(Request $request, EvacuationCenter $center): JsonResponse
@@ -285,6 +331,7 @@ class EvacuationCenterController extends Controller
             $data['longitude'] = $coordinateSource->longitude;
         }
         $center = EvacuationCenter::create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id, 'is_active' => $data['status'] === 'ACTIVE']);
+
         return response()->json(['success' => true, 'message' => 'Evacuation center created.', 'data' => $center], 201);
     }
 
@@ -292,43 +339,50 @@ class EvacuationCenterController extends Controller
     {
         $data = $this->validateCenter($request, $center);
         $center->update($data + ['updated_by' => $request->user()->id, 'is_active' => $data['status'] === 'ACTIVE']);
+
         return response()->json(['success' => true, 'message' => 'Evacuation center updated.', 'data' => $center]);
     }
 
     private function validateCenter(Request $request, ?EvacuationCenter $center = null): array
     {
         $data = $request->validate([
-            'name' => ['required','string','max:255'], 'disaster_id' => ['required','exists:disasters,id'], 'barangay_id' => ['required','exists:barangays,id'],
-            'address' => ['required','string','max:1000'], 'contact_person' => ['nullable','string','max:255'],
-            'contact_number' => ['nullable','regex:/^(09|\+639)\d{9}$/'], 'capacity' => ['required','integer','min:1'],
-            'description' => ['nullable','string','max:2000'], 'status' => ['required', Rule::in(['ACTIVE','INACTIVE','FULL','CLOSED'])],
-            'payout_availability' => ['required', Rule::in(['AVAILABLE','NOT_AVAILABLE','COMPLETED'])],
-            'default_payout_date' => ['nullable','date'], 'default_payout_start_time' => ['nullable','date_format:H:i'], 'default_payout_end_time' => ['nullable','date_format:H:i','after:default_payout_start_time'],
+            'name' => ['required', 'string', 'max:255'], 'disaster_id' => ['required', 'exists:disasters,id'], 'barangay_id' => ['required', 'exists:barangays,id'],
+            'address' => ['required', 'string', 'max:1000'], 'contact_person' => ['nullable', 'string', 'max:255'],
+            'contact_number' => ['nullable', 'regex:/^(09|\+639)\d{9}$/'], 'capacity' => ['required', 'integer', 'min:1'],
+            'description' => ['nullable', 'string', 'max:2000'], 'status' => ['required', Rule::in(['ACTIVE', 'INACTIVE', 'FULL', 'CLOSED'])],
+            'payout_availability' => ['required', Rule::in(['AVAILABLE', 'NOT_AVAILABLE', 'COMPLETED'])],
+            'default_payout_date' => ['nullable', 'date'], 'default_payout_start_time' => ['nullable', 'date_format:H:i'], 'default_payout_end_time' => ['nullable', 'date_format:H:i', 'after:default_payout_start_time'],
         ]);
-        if ($data['status'] !== 'ACTIVE' && $data['payout_availability'] === 'AVAILABLE') throw ValidationException::withMessages(['payout_availability' => 'Only active centers can be available for payout.']);
+        if ($data['status'] !== 'ACTIVE' && $data['payout_availability'] === 'AVAILABLE') {
+            throw ValidationException::withMessages(['payout_availability' => 'Only active centers can be available for payout.']);
+        }
         $duplicate = EvacuationCenter::where('name', $data['name'])->where('address', $data['address'])->when($center, fn ($q) => $q->whereKeyNot($center->id))->exists();
-        if ($duplicate) throw ValidationException::withMessages(['name' => 'A center with the same name and address already exists.']);
+        if ($duplicate) {
+            throw ValidationException::withMessages(['name' => 'A center with the same name and address already exists.']);
+        }
+
         return $data;
     }
 
     public function show(EvacuationCenter $center)
     {
-        $center->load(['barangay', 'disaster', 'documents' => fn ($q) => $q->where('document_type','bfp_certificate')->latest(), 'payoutSessions' => fn ($q) => $q->latest('payout_date')]);
-        $assignments = $center->activeAssignments()->with(['family.familyMembers','family.validationRecords'])->get();
-        $apiFamilies = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('familyMembers')->get();
+        $center->load(['barangay', 'disaster', 'documents' => fn ($q) => $q->where('document_type', 'bfp_certificate')->latest(), 'payoutSessions' => fn ($q) => $q->latest('payout_date')]);
+        $assignments = $center->activeAssignments()->with(['family.familyMembers', 'family.validationRecords'])->get();
+        $apiFamilies = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('householdMembers')->get();
         $additionalMembers = $assignments->sum(fn ($assignment) => $assignment->family->familyMembers->count())
-            + $apiFamilies->sum('family_members_count');
+            + $apiFamilies->sum('household_members_count');
         $assigned = $assignments->count() + $apiFamilies->count();
+
         return view('disaster.evacuation-center-show', [
             'page_title' => $center->disaster_class_name ?: $center->disaster?->name ?: $center->name,
             'page_description' => 'Evacuation Center: '.$center->name,
             'center' => $center, 'session' => $center->payoutSessions->first(),
-            'summary' => ['families' => $assigned, 'evacuees' => $assigned + $additionalMembers, 'available' => max(0, (int) $center->capacity - ($assigned + $additionalMembers)), 'validated' => $assignments->filter(fn($assignment)=>$assignment->family->validationRecords->contains('status','Validated'))->count()],
+            'summary' => ['families' => $assigned, 'evacuees' => $assigned + $additionalMembers, 'available' => max(0, (int) $center->capacity - ($assigned + $additionalMembers)), 'validated' => $assignments->filter(fn ($assignment) => $assignment->family->validationRecords->contains('status', 'Validated'))->count()],
             'disasters' => Disaster::orderByDesc('incident_date')->get(['id', 'name']),
             'officers' => User::permission('manage payout schedules')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'transferCenterOptions' => EvacuationCenter::where('disaster_id', $center->disaster_id)->whereKeyNot($center->id)->where('is_active', true)->where('status', 'ACTIVE')->with('barangay')->orderBy('name')->get()->map(fn($item)=>['id'=>$item->id,'name'=>$item->name,'barangay'=>$item->barangay?->name,'barangay_id'=>$item->barangay_id])->values(),
-            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->hasAnyRole(['admin','superadmin']),
-            'canCloseCenter' => request()->user()->hasAnyRole(['admin','superadmin']),
+            'transferCenterOptions' => EvacuationCenter::where('disaster_id', $center->disaster_id)->whereKeyNot($center->id)->where('is_active', true)->where('status', 'ACTIVE')->with('barangay')->orderBy('name')->get()->map(fn ($item) => ['id' => $item->id, 'name' => $item->name, 'barangay' => $item->barangay?->name, 'barangay_id' => $item->barangay_id])->values(),
+            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->hasAnyRole(['admin', 'superadmin']),
+            'canCloseCenter' => request()->user()->hasAnyRole(['admin', 'superadmin']),
             'canManageAvailability' => false,
             'bfpCertificate' => $center->documents->first(),
         ]);
@@ -336,45 +390,62 @@ class EvacuationCenterController extends Controller
 
     public function uploadBfpCertificate(Request $request, EvacuationCenter $center)
     {
-        $data=$request->validate(['bfp_certificate'=>['required','file','mimes:jpg,jpeg,png,pdf','max:8192']]);
-        $file=$data['bfp_certificate'];
-        $center->documents()->create(['document_type'=>'bfp_certificate','file_path'=>$file->store('evacuation-center-documents','local'),'original_name'=>$file->getClientOriginalName(),'mime_type'=>$file->getMimeType(),'file_size'=>$file->getSize(),'uploaded_by'=>$request->user()->id]);
-        return back()->with('success','BFP Certificate uploaded for this evacuation center.');
+        $data = $request->validate(['bfp_certificate' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:8192']]);
+        $file = $data['bfp_certificate'];
+        $center->documents()->create(['document_type' => 'bfp_certificate', 'file_path' => $file->store('evacuation-center-documents', 'local'), 'original_name' => $file->getClientOriginalName(), 'mime_type' => $file->getMimeType(), 'file_size' => $file->getSize(), 'uploaded_by' => $request->user()->id]);
+
+        return back()->with('success', 'BFP Certificate uploaded for this evacuation center.');
     }
 
     public function families(Request $request, EvacuationCenter $center): JsonResponse
     {
         $data = $request->validate([
-            'search' => ['nullable','string','max:255'], 'per_page' => ['nullable','integer','min:5','max:100'],
-            'sort' => ['nullable', Rule::in(['assigned_at','household','dafac','status'])], 'direction' => ['nullable', Rule::in(['asc','desc'])],
-            'validation_status' => ['nullable', Rule::in(['Validated','For Validation'])], 'payout_status' => ['nullable','string','max:30'],
-            'housing_condition' => ['nullable','string','max:50'], 'house_ownership' => ['nullable','string','max:30'],
-            'disaster_id' => ['nullable','integer','exists:disasters,id'], 'assigned_from' => ['nullable','date'], 'assigned_to' => ['nullable','date','after_or_equal:assigned_from'],
+            'search' => ['nullable', 'string', 'max:255'], 'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
+            'sort' => ['nullable', Rule::in(['assigned_at', 'household', 'dafac', 'status'])], 'direction' => ['nullable', Rule::in(['asc', 'desc'])],
+            'validation_status' => ['nullable', Rule::in(['Validated', 'For Validation'])], 'payout_status' => ['nullable', 'string', 'max:30'],
+            'housing_condition' => ['nullable', 'string', 'max:50'], 'house_ownership' => ['nullable', 'string', 'max:30'],
+            'disaster_id' => ['nullable', 'integer', 'exists:disasters,id'], 'assigned_from' => ['nullable', 'date'], 'assigned_to' => ['nullable', 'date', 'after_or_equal:assigned_from'],
         ]);
-        $query = $center->activeAssignments()->with(['family.barangay','family.disaster','family.dafacRecord','family.tcissMasterlistRecord','family.familyMembers','family.validationRecords'])
-            ->when($request->filled('search'), function ($q) use ($request) { $search='%'.$request->string('search').'%'; $q->whereHas('family', fn($f)=>$f->where('household_head_surname','like',$search)->orWhere('household_head_given_name','like',$search)->orWhere('complete_address','like',$search)->orWhereHas('dafacRecord',fn($d)=>$d->where('reference_number','like',$search))->orWhereHas('tcissMasterlistRecord',fn($t)=>$t->where('source_reference','like',$search))->orWhereHas('familyMembers',fn($m)=>$m->where('name','like',$search))); })
-            ->when($request->validation_status==='Validated', fn($q)=>$q->whereHas('family.validationRecords',fn($v)=>$v->where('status','Validated')))
-            ->when($request->validation_status==='For Validation', fn($q)=>$q->whereDoesntHave('family.validationRecords',fn($v)=>$v->where('status','Validated')))
-            ->when($request->filled('housing_condition'), fn($q)=>$q->whereHas('family',fn($f)=>$f->where('housing_condition',$request->housing_condition)))
-            ->when($request->filled('house_ownership'), fn($q)=>$q->whereHas('family',fn($f)=>$f->where('house_ownership',$request->house_ownership)))
-            ->when($request->filled('disaster_id'), fn($q)=>$q->where('disaster_id',$request->integer('disaster_id')))
-            ->when($request->filled('assigned_from'), fn($q)=>$q->whereDate('assigned_at','>=',$request->assigned_from))
-            ->when($request->filled('assigned_to'), fn($q)=>$q->whereDate('assigned_at','<=',$request->assigned_to));
-        if ($request->filled('payout_status')) $query->whereHas('family.payoutReleases',fn($q)=>$q->where('evacuation_center_id',$center->id)->where('status',$request->payout_status));
-        $direction=$data['direction']??'desc'; $sort=$data['sort']??'assigned_at';
-        if($sort==='assigned_at') $query->orderBy('assigned_at',$direction);
-        elseif($sort==='household') $query->orderBy(AffectedFamily::select('household_head_surname')->whereColumn('affected_families.id','evacuation_center_assignments.affected_family_id')->limit(1),$direction);
-        elseif($sort==='status') $query->orderBy(AffectedFamily::select('status')->whereColumn('affected_families.id','evacuation_center_assignments.affected_family_id')->limit(1),$direction);
-        else $query->orderBy(DafacRecord::select('reference_number')->whereColumn('dafac_records.affected_family_id','evacuation_center_assignments.affected_family_id')->limit(1),$direction);
-        $page=$query->paginate($data['per_page']??15);
-        $rows=$page->getCollection()->map(function($assignment)use($center){$f=$assignment->family;$validated=$f->validationRecords->contains('status','Validated');return ['assignment_id'=>$assignment->id,'family_id'=>$f->id,'control_number'=>$f->tcissMasterlistRecord?->source_reference ?? $f->dafacRecord?->reference_number,'dafac_reference'=>$f->dafacRecord?->reference_number,'tciss_reference'=>$f->tcissMasterlistRecord?->source_reference,'household_head'=>$f->household_head_full_name,'address'=>$f->complete_address,'barangay'=>$f->barangay?->name,'barangay_id'=>$f->barangay_id,'family_members'=>$f->familyMembers->count(),'household_size'=>$f->familyMembers->count()+1,'housing_condition'=>$f->housing_condition,'house_ownership'=>$f->house_ownership,'validation_status'=>$validated?'Validated':'For Validation','assigned_at'=>$assignment->assigned_at?->toIso8601String(),'open_url'=>route('disaster.payouts.centers.families.payout-details',[$center,$f]),'transfer_url'=>route('disaster.payouts.centers.families.transfer',[$center,$f])];});
-        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('familyMembers')
+        $query = $center->activeAssignments()->with(['family.barangay', 'family.disaster', 'family.dafacRecord', 'family.tcissMasterlistRecord', 'family.familyMembers', 'family.validationRecords'])
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $search = '%'.$request->string('search').'%';
+                $q->whereHas('family', fn ($f) => $f->where('household_head_surname', 'like', $search)->orWhere('household_head_given_name', 'like', $search)->orWhere('complete_address', 'like', $search)->orWhereHas('dafacRecord', fn ($d) => $d->where('reference_number', 'like', $search))->orWhereHas('tcissMasterlistRecord', fn ($t) => $t->where('source_reference', 'like', $search))->orWhereHas('familyMembers', fn ($m) => $m->where('name', 'like', $search)));
+            })
+            ->when($request->validation_status === 'Validated', fn ($q) => $q->whereHas('family.validationRecords', fn ($v) => $v->where('status', 'Validated')))
+            ->when($request->validation_status === 'For Validation', fn ($q) => $q->whereDoesntHave('family.validationRecords', fn ($v) => $v->where('status', 'Validated')))
+            ->when($request->filled('housing_condition'), fn ($q) => $q->whereHas('family', fn ($f) => $f->where('housing_condition', $request->housing_condition)))
+            ->when($request->filled('house_ownership'), fn ($q) => $q->whereHas('family', fn ($f) => $f->where('house_ownership', $request->house_ownership)))
+            ->when($request->filled('disaster_id'), fn ($q) => $q->where('disaster_id', $request->integer('disaster_id')))
+            ->when($request->filled('assigned_from'), fn ($q) => $q->whereDate('assigned_at', '>=', $request->assigned_from))
+            ->when($request->filled('assigned_to'), fn ($q) => $q->whereDate('assigned_at', '<=', $request->assigned_to));
+        if ($request->filled('payout_status')) {
+            $query->whereHas('family.payoutReleases', fn ($q) => $q->where('evacuation_center_id', $center->id)->where('status', $request->payout_status));
+        }
+        $direction = $data['direction'] ?? 'desc';
+        $sort = $data['sort'] ?? 'assigned_at';
+        if ($sort === 'assigned_at') {
+            $query->orderBy('assigned_at', $direction);
+        } elseif ($sort === 'household') {
+            $query->orderBy(AffectedFamily::select('household_head_surname')->whereColumn('affected_families.id', 'evacuation_center_assignments.affected_family_id')->limit(1), $direction);
+        } elseif ($sort === 'status') {
+            $query->orderBy(AffectedFamily::select('status')->whereColumn('affected_families.id', 'evacuation_center_assignments.affected_family_id')->limit(1), $direction);
+        } else {
+            $query->orderBy(DafacRecord::select('reference_number')->whereColumn('dafac_records.affected_family_id', 'evacuation_center_assignments.affected_family_id')->limit(1), $direction);
+        }
+        $page = $query->paginate($data['per_page'] ?? 15);
+        $rows = $page->getCollection()->map(function ($assignment) use ($center) {
+            $f = $assignment->family;
+            $validated = $f->validationRecords->contains('status', 'Validated');
+
+            return ['assignment_id' => $assignment->id, 'family_id' => $f->id, 'control_number' => $f->tcissMasterlistRecord?->source_reference ?? $f->dafacRecord?->reference_number, 'dafac_reference' => $f->dafacRecord?->reference_number, 'tciss_reference' => $f->tcissMasterlistRecord?->source_reference, 'household_head' => $f->household_head_full_name, 'address' => $f->complete_address, 'barangay' => $f->barangay?->name, 'barangay_id' => $f->barangay_id, 'family_members' => $f->familyMembers->count(), 'household_size' => $f->familyMembers->count() + 1, 'housing_condition' => $f->housing_condition, 'house_ownership' => $f->house_ownership, 'validation_status' => $validated ? 'Validated' : 'For Validation', 'assigned_at' => $assignment->assigned_at?->toIso8601String(), 'open_url' => route('disaster.payouts.centers.families.payout-details', [$center, $f]), 'transfer_url' => route('disaster.payouts.centers.families.transfer', [$center, $f])];
+        });
+        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('householdMembers')
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = '%'.$request->string('search').'%';
                 $query->where(fn ($query) => $query->where('control_number', 'like', $search)
                     ->orWhere('full_name', 'like', $search)->orWhere('street', 'like', $search)
-                    ->orWhere('barangay', 'like', $search)->orWhereHas('familyMembers', fn ($members) => $members
-                        ->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
+                    ->orWhere('barangay', 'like', $search)->orWhereHas('householdMembers', fn ($members) => $members
+                    ->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
             })
             ->when($request->validation_status === 'Validated', fn ($query) => $query->whereRaw('1 = 0'))
             ->when($request->filled('housing_condition'), fn ($query) => $query->where('housing_condition', $request->housing_condition))
@@ -387,8 +458,8 @@ class EvacuationCenterController extends Controller
                 'assignment_id' => 'tciss-'.$family->id, 'family_id' => null, 'dafac_reference' => null,
                 'control_number' => $family->control_number, 'tciss_reference' => $family->control_number, 'household_head' => $family->full_name,
                 'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '),
-                'barangay' => $family->barangay, 'family_members' => $family->family_members_count,
-                'household_size' => $family->family_members_count + 1, 'housing_condition' => $family->housing_condition,
+                'barangay' => $family->barangay, 'family_members' => $family->household_members_count,
+                'household_size' => $family->household_members_count + 1, 'housing_condition' => $family->housing_condition,
                 'house_ownership' => $family->housing, 'validation_status' => 'For Validation',
                 'assigned_at' => $family->evacuation_center_assigned_at?->toIso8601String(),
                 'open_url' => route('disaster.payouts.centers.tciss-families.details', [$center, $family]),
@@ -397,7 +468,8 @@ class EvacuationCenterController extends Controller
             ]));
         }
         $total = $page->total() + $apiTotal;
-        return response()->json(['success'=>true,'data'=>$rows->values(),'meta'=>['current_page'=>$page->currentPage(),'last_page'=>max(1,(int)ceil($total/$page->perPage())),'per_page'=>$page->perPage(),'total'=>$total,'from'=>$total ? (($page->currentPage()-1)*$page->perPage())+1 : null,'to'=>$total ? min($total,(($page->currentPage()-1)*$page->perPage())+$rows->count()) : null]]);
+
+        return response()->json(['success' => true, 'data' => $rows->values(), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => max(1, (int) ceil($total / $page->perPage())), 'per_page' => $page->perPage(), 'total' => $total, 'from' => $total ? (($page->currentPage() - 1) * $page->perPage()) + 1 : null, 'to' => $total ? min($total, (($page->currentPage() - 1) * $page->perPage()) + $rows->count()) : null]]);
     }
 
     public function personAffectedDetails(EvacuationCenter $center, PersonAffected $personAffected): JsonResponse
@@ -406,60 +478,77 @@ class EvacuationCenterController extends Controller
         if ($personAffected->affectedFamily) {
             return $this->payoutDetails($center, $personAffected->affectedFamily);
         }
-        $personAffected->load('familyMembers');
+        $personAffected->load('householdMembers');
 
         return response()->json(['success' => true, 'data' => [
             'affected_family' => [
-                'id' => null, 'surname' => str_contains((string)$personAffected->full_name, ',') ? trim(explode(',', $personAffected->full_name, 2)[0]) : '',
-                'given_name' => str_contains((string)$personAffected->full_name, ',') ? trim(explode(',', $personAffected->full_name, 2)[1]) : $personAffected->full_name,
+                'id' => null, 'surname' => str_contains((string) $personAffected->full_name, ',') ? trim(explode(',', $personAffected->full_name, 2)[0]) : '',
+                'given_name' => str_contains((string) $personAffected->full_name, ',') ? trim(explode(',', $personAffected->full_name, 2)[1]) : $personAffected->full_name,
                 'middle_name' => null, 'household_head' => $personAffected->full_name,
                 'birthdate' => $personAffected->birthdate?->format('Y-m-d'), 'age' => $personAffected->age,
                 'occupation' => $personAffected->occupation, 'monthly_income' => $personAffected->monthly_income,
                 'contact_number' => null,
                 'address' => collect([$personAffected->street, $personAffected->barangay, $personAffected->city])->filter()->implode(', '),
-                'barangay' => $personAffected->barangay, 'family_members' => $personAffected->familyMembers->count(),
-                'household_size' => $personAffected->familyMembers->count() + 1,
+                'barangay' => $personAffected->barangay, 'family_members' => $personAffected->householdMembers->count(),
+                'household_size' => $personAffected->householdMembers->count() + 1,
                 'housing_condition' => $personAffected->housing_condition, 'house_ownership' => $personAffected->housing,
                 'health_condition' => $personAffected->health_condition, 'validation_status' => 'For Validation',
                 'workflow_status' => 'For Validation',
             ],
             'dafac' => ['reference' => null], 'tciss' => ['reference' => $personAffected->control_number],
             'evacuation_center' => ['id' => $center->id, 'name' => $center->name],
-            'family_members' => $personAffected->familyMembers->map(fn ($member) => [
-                'name' => $member->full_name, 'birthdate' => null, 'age' => $member->age,
+            'family_members' => $personAffected->householdMembers->map(fn ($member) => [
+                'name' => $member->full_name, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age,
                 'relationship' => $member->relationship, 'sex' => $member->sex,
-                'occupation' => null, 'health_condition' => null, 'remarks_code' => $member->code, 'remarks_label' => $member->remarks_label,
+                'occupation' => $member->occupation, 'health_condition' => $member->health_condition,
+                'remarks_code' => $member->code, 'remarks_label' => MemberRemark::label($member->code),
                 'remarks_url' => route('disaster.payouts.centers.tciss-families.members.remarks', [$center, $personAffected, $member]),
             ])->values(),
-            'payout' => null, 'defaults' => ['assistance_kind'=>null,'quantity'=>1,'amount'=>null,'provider'=>null,'payout_date'=>null],
-            'availability' => ['status'=>'FOR_VALIDATION','can_process'=>false], 'payout_history' => [],
+            'payout' => null, 'defaults' => ['assistance_kind' => null, 'quantity' => 1, 'amount' => null, 'provider' => null, 'payout_date' => null],
+            'availability' => ['status' => 'FOR_VALIDATION', 'can_process' => false], 'payout_history' => [],
         ]]);
     }
 
     public function exportFamilies(Request $request, EvacuationCenter $center)
     {
-        $data=$request->validate(['search'=>['nullable','string','max:255'],'validation_status'=>['nullable',Rule::in(['Validated','For Validation'])],'housing_condition'=>['nullable','string','max:50'],'house_ownership'=>['nullable','string','max:30'],'disaster_id'=>['nullable','integer','exists:disasters,id'],'assigned_from'=>['nullable','date'],'assigned_to'=>['nullable','date','after_or_equal:assigned_from'],'sort'=>['nullable',Rule::in(['assigned_at','household','dafac','status'])]]);
-        $query=$center->activeAssignments()->with(['family.barangay','family.disaster','family.dafacRecord','family.tcissMasterlistRecord','family.familyMembers','family.validationRecords'])
-            ->when($request->filled('search'),function($q)use($request){$search='%'.$request->string('search').'%';$q->whereHas('family',fn($f)=>$f->where('household_head_surname','like',$search)->orWhere('household_head_given_name','like',$search)->orWhere('complete_address','like',$search)->orWhereHas('dafacRecord',fn($d)=>$d->where('reference_number','like',$search))->orWhereHas('tcissMasterlistRecord',fn($t)=>$t->where('source_reference','like',$search))->orWhereHas('familyMembers',fn($m)=>$m->where('name','like',$search)));})
-            ->when($request->validation_status==='Validated',fn($q)=>$q->whereHas('family.validationRecords',fn($v)=>$v->where('status','Validated')))
-            ->when($request->validation_status==='For Validation',fn($q)=>$q->whereDoesntHave('family.validationRecords',fn($v)=>$v->where('status','Validated')))
-            ->when($request->filled('housing_condition'),fn($q)=>$q->whereHas('family',fn($f)=>$f->where('housing_condition',$request->housing_condition)))
-            ->when($request->filled('house_ownership'),fn($q)=>$q->whereHas('family',fn($f)=>$f->where('house_ownership',$request->house_ownership)))
-            ->when($request->filled('disaster_id'),fn($q)=>$q->where('disaster_id',$request->integer('disaster_id')))
-            ->when($request->filled('assigned_from'),fn($q)=>$q->whereDate('assigned_at','>=',$request->assigned_from))
-            ->when($request->filled('assigned_to'),fn($q)=>$q->whereDate('assigned_at','<=',$request->assigned_to));
-        $sort=$data['sort']??'assigned_at';
-        if($sort==='household')$query->orderBy(AffectedFamily::select('household_head_surname')->whereColumn('affected_families.id','evacuation_center_assignments.affected_family_id')->limit(1));
-        elseif($sort==='status')$query->orderBy(AffectedFamily::select('status')->whereColumn('affected_families.id','evacuation_center_assignments.affected_family_id')->limit(1));
-        elseif($sort==='dafac')$query->orderBy(DafacRecord::select('reference_number')->whereColumn('dafac_records.affected_family_id','evacuation_center_assignments.affected_family_id')->limit(1));
-        else $query->latest('assigned_at');
-        $rows=$query->get()->map(function($assignment){$family=$assignment->family;return ['control_number'=>$family->tcissMasterlistRecord?->source_reference??$family->dafacRecord?->reference_number,'household_head'=>$family->household_head_full_name,'head'=>['name'=>$family->household_head_full_name,'relationship'=>'Household Head','birthdate'=>$family->birthdate?->format('Y-m-d'),'age'=>$family->age,'sex'=>null,'occupation'=>$family->occupation,'health_condition'=>$family->health_condition,'remarks'=>null],'members'=>$family->familyMembers->map(fn($member)=>['name'=>$member->name,'relationship'=>$member->relationship_to_head,'birthdate'=>$member->birthdate?->format('Y-m-d'),'age'=>$member->age,'sex'=>$member->sex,'occupation'=>$member->occupation,'health_condition'=>$member->health_condition,'remarks'=>$member->remarks_label])->values()->all(),'address'=>$family->complete_address,'barangay'=>$family->barangay?->name,'family_members'=>$family->familyMembers->count(),'household_size'=>$family->familyMembers->count()+1,'housing_condition'=>$family->housing_condition,'house_ownership'=>$family->house_ownership,'validation_status'=>$family->validationRecords->contains('status','Validated')?'Validated':'For Validation','assigned_at'=>$assignment->assigned_at];});
-        $apiQuery=$center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->with('familyMembers')->withCount('familyMembers')
-            ->when($request->filled('search'),function($q)use($request){$search='%'.$request->string('search').'%';$q->where(fn($q)=>$q->where('control_number','like',$search)->orWhere('full_name','like',$search)->orWhere('street','like',$search)->orWhere('barangay','like',$search)->orWhereHas('familyMembers',fn($members)=>$members->where('control_number','like',$search)->orWhere('full_name','like',$search)));})
-            ->when($request->validation_status==='Validated',fn($q)=>$q->whereRaw('1 = 0'))->when($request->filled('housing_condition'),fn($q)=>$q->where('housing_condition',$request->housing_condition))->when($request->filled('house_ownership'),fn($q)=>$q->where('housing',$request->house_ownership))->when($request->filled('assigned_from'),fn($q)=>$q->whereDate('evacuation_center_assigned_at','>=',$request->assigned_from))->when($request->filled('assigned_to'),fn($q)=>$q->whereDate('evacuation_center_assigned_at','<=',$request->assigned_to));
-        $rows=$rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(fn($family)=>['control_number'=>$family->control_number,'household_head'=>$family->full_name,'head'=>['name'=>$family->full_name,'relationship'=>'Household Head','birthdate'=>$family->birthdate?->format('Y-m-d'),'age'=>$family->age,'sex'=>$family->sex,'occupation'=>$family->occupation,'health_condition'=>$family->health_condition,'remarks'=>MemberRemark::label($family->code)],'members'=>$family->familyMembers->map(fn($member)=>['name'=>$member->full_name,'relationship'=>$member->relationship,'birthdate'=>null,'age'=>$member->age,'sex'=>$member->sex,'occupation'=>null,'health_condition'=>null,'remarks'=>$member->remarks_label])->values()->all(),'address'=>collect([$family->street,$family->barangay,$family->city])->filter()->implode(', '),'barangay'=>$family->barangay,'family_members'=>$family->family_members_count,'household_size'=>$family->family_members_count+1,'housing_condition'=>$family->housing_condition,'house_ownership'=>$family->housing,'validation_status'=>'For Validation','assigned_at'=>$family->evacuation_center_assigned_at]));
-        $filters=collect(['Search'=>$request->search,'Validation'=>$request->validation_status,'Housing condition'=>$request->housing_condition,'Ownership'=>$request->house_ownership,'Assigned from'=>$request->assigned_from,'Assigned to'=>$request->assigned_to])->filter(fn($value)=>filled($value))->map(fn($value,$key)=>$key.': '.$value)->implode(' | ');
-        return Excel::download(new EvacuationCenterFamiliesExport($center->load(['barangay','disaster']),$rows,$filters),'assigned-families-'.Str::slug($center->name).'-'.now()->format('Y-m-d-His').'.xlsx');
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:255'], 'validation_status' => ['nullable', Rule::in(['Validated', 'For Validation'])], 'housing_condition' => ['nullable', 'string', 'max:50'], 'house_ownership' => ['nullable', 'string', 'max:30'], 'disaster_id' => ['nullable', 'integer', 'exists:disasters,id'], 'assigned_from' => ['nullable', 'date'], 'assigned_to' => ['nullable', 'date', 'after_or_equal:assigned_from'], 'sort' => ['nullable', Rule::in(['assigned_at', 'household', 'dafac', 'status'])]]);
+        $query = $center->activeAssignments()->with(['family.barangay', 'family.disaster', 'family.dafacRecord', 'family.tcissMasterlistRecord', 'family.familyMembers', 'family.validationRecords'])
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $search = '%'.$request->string('search').'%';
+                $q->whereHas('family', fn ($f) => $f->where('household_head_surname', 'like', $search)->orWhere('household_head_given_name', 'like', $search)->orWhere('complete_address', 'like', $search)->orWhereHas('dafacRecord', fn ($d) => $d->where('reference_number', 'like', $search))->orWhereHas('tcissMasterlistRecord', fn ($t) => $t->where('source_reference', 'like', $search))->orWhereHas('familyMembers', fn ($m) => $m->where('name', 'like', $search)));
+            })
+            ->when($request->validation_status === 'Validated', fn ($q) => $q->whereHas('family.validationRecords', fn ($v) => $v->where('status', 'Validated')))
+            ->when($request->validation_status === 'For Validation', fn ($q) => $q->whereDoesntHave('family.validationRecords', fn ($v) => $v->where('status', 'Validated')))
+            ->when($request->filled('housing_condition'), fn ($q) => $q->whereHas('family', fn ($f) => $f->where('housing_condition', $request->housing_condition)))
+            ->when($request->filled('house_ownership'), fn ($q) => $q->whereHas('family', fn ($f) => $f->where('house_ownership', $request->house_ownership)))
+            ->when($request->filled('disaster_id'), fn ($q) => $q->where('disaster_id', $request->integer('disaster_id')))
+            ->when($request->filled('assigned_from'), fn ($q) => $q->whereDate('assigned_at', '>=', $request->assigned_from))
+            ->when($request->filled('assigned_to'), fn ($q) => $q->whereDate('assigned_at', '<=', $request->assigned_to));
+        $sort = $data['sort'] ?? 'assigned_at';
+        if ($sort === 'household') {
+            $query->orderBy(AffectedFamily::select('household_head_surname')->whereColumn('affected_families.id', 'evacuation_center_assignments.affected_family_id')->limit(1));
+        } elseif ($sort === 'status') {
+            $query->orderBy(AffectedFamily::select('status')->whereColumn('affected_families.id', 'evacuation_center_assignments.affected_family_id')->limit(1));
+        } elseif ($sort === 'dafac') {
+            $query->orderBy(DafacRecord::select('reference_number')->whereColumn('dafac_records.affected_family_id', 'evacuation_center_assignments.affected_family_id')->limit(1));
+        } else {
+            $query->latest('assigned_at');
+        }
+        $rows = $query->get()->map(function ($assignment) {
+            $family = $assignment->family;
+
+            return ['control_number' => $family->tcissMasterlistRecord?->source_reference ?? $family->dafacRecord?->reference_number, 'household_head' => $family->household_head_full_name, 'head' => ['name' => $family->household_head_full_name, 'relationship' => 'Household Head', 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'sex' => null, 'occupation' => $family->occupation, 'health_condition' => $family->health_condition, 'remarks' => null], 'members' => $family->familyMembers->map(fn ($member) => ['name' => $member->name, 'relationship' => $member->relationship_to_head, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex, 'occupation' => $member->occupation, 'health_condition' => $member->health_condition, 'remarks' => $member->remarks_label])->values()->all(), 'address' => $family->complete_address, 'barangay' => $family->barangay?->name, 'family_members' => $family->familyMembers->count(), 'household_size' => $family->familyMembers->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->house_ownership, 'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation', 'assigned_at' => $assignment->assigned_at];
+        });
+        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->with('householdMembers')->withCount('householdMembers')
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $search = '%'.$request->string('search').'%';
+                $q->where(fn ($q) => $q->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)->orWhere('street', 'like', $search)->orWhere('barangay', 'like', $search)->orWhereHas('householdMembers', fn ($members) => $members->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
+            })
+            ->when($request->validation_status === 'Validated', fn ($q) => $q->whereRaw('1 = 0'))->when($request->filled('housing_condition'), fn ($q) => $q->where('housing_condition', $request->housing_condition))->when($request->filled('house_ownership'), fn ($q) => $q->where('housing', $request->house_ownership))->when($request->filled('assigned_from'), fn ($q) => $q->whereDate('evacuation_center_assigned_at', '>=', $request->assigned_from))->when($request->filled('assigned_to'), fn ($q) => $q->whereDate('evacuation_center_assigned_at', '<=', $request->assigned_to));
+        $rows = $rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(fn ($family) => ['control_number' => $family->control_number, 'household_head' => $family->full_name, 'head' => ['name' => $family->full_name, 'relationship' => 'Household Head', 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'sex' => $family->sex, 'occupation' => $family->occupation, 'health_condition' => $family->health_condition, 'remarks' => MemberRemark::label($family->code)], 'members' => $family->householdMembers->map(fn ($member) => ['name' => $member->full_name, 'relationship' => $member->relationship, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex, 'occupation' => $member->occupation, 'health_condition' => $member->health_condition, 'remarks' => MemberRemark::label($member->code)])->values()->all(), 'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '), 'barangay' => $family->barangay, 'family_members' => $family->household_members_count, 'household_size' => $family->household_members_count + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->housing, 'validation_status' => 'For Validation', 'assigned_at' => $family->evacuation_center_assigned_at]));
+        $filters = collect(['Search' => $request->search, 'Validation' => $request->validation_status, 'Housing condition' => $request->housing_condition, 'Ownership' => $request->house_ownership, 'Assigned from' => $request->assigned_from, 'Assigned to' => $request->assigned_to])->filter(fn ($value) => filled($value))->map(fn ($value, $key) => $key.': '.$value)->implode(' | ');
+
+        return Excel::download(new EvacuationCenterFamiliesExport($center->load(['barangay', 'disaster']), $rows, $filters), 'assigned-families-'.Str::slug($center->name).'-'.now()->format('Y-m-d-His').'.xlsx');
     }
 
     public function updatePersonAffectedConditions(Request $request, EvacuationCenter $center, PersonAffected $personAffected): JsonResponse
@@ -469,6 +558,7 @@ class EvacuationCenterController extends Controller
             'housing_condition' => ['nullable', Rule::in(['Totally Damaged', 'Partially Damaged', 'Water Damage'])],
             'health_condition' => ['nullable', Rule::in(['N/A', 'Dead', 'Injured', 'Missing', 'With Illness'])],
         ]);
+
         return DB::transaction(function () use ($data, $request, $center, $personAffected) {
             if ($personAffected->affectedFamily?->validationRecords()->where('status', 'Validated')->exists()) {
                 throw ValidationException::withMessages(['validation' => 'This family has already been validated.']);
@@ -500,7 +590,7 @@ class EvacuationCenterController extends Controller
                         'health_condition' => $data['health_condition'], 'status' => FamilyStatus::VALIDATED,
                         'created_by' => $request->user()->id, 'updated_by' => $request->user()->id]
                 );
-                foreach ($personAffected->familyMembers as $member) {
+                foreach ($personAffected->householdMembers as $member) {
                     $family->familyMembers()->updateOrCreate(['name' => $member->full_name], [
                         'age' => $member->age, 'relationship_to_head' => $member->relationship ?: 'Member',
                         'sex' => in_array($member->sex, ['Male', 'Female'], true) ? $member->sex : null,
@@ -538,18 +628,27 @@ class EvacuationCenterController extends Controller
 
     public function payoutDetails(EvacuationCenter $center, AffectedFamily $family): JsonResponse
     {
-        abort_unless($center->activeAssignments()->where('affected_family_id',$family->id)->exists(),404,'This family is not currently assigned to the evacuation center.');
-        $family->load(['barangay','dafacRecord','tcissMasterlistRecord','familyMembers','validationRecords','payoutReleases'=>fn($q)=>$q->where('evacuation_center_id',$center->id)->latest(),'payoutReleases.releaser']);
-        $validated=$family->validationRecords->contains('status','Validated'); $session=$center->payoutSessions()->latest('payout_date')->first(); $payout=$family->payoutReleases->first();
-        if($validated&&!$payout){$schedule=PayoutSchedule::firstOrCreate(['disaster_id'=>$family->disaster_id,'title'=>$center->name.' Validated Household Payout'],['scheduled_date'=>today(),'venue'=>$center->name,'notes'=>'Automatically prepared after DAFAC household validation.','created_by'=>request()->user()->id]);$payout=PayoutRelease::firstOrCreate(['payout_schedule_id'=>$schedule->id,'affected_family_id'=>$family->id],['evacuation_center_id'=>$center->id,'status'=>'Scheduled','quantity'=>1]);if(!in_array($family->status,[FamilyStatus::PAYOUT_SCHEDULED,FamilyStatus::ASSISTANCE_RELEASED,FamilyStatus::REQUIREMENTS_PENDING,FamilyStatus::REQUIREMENTS_COMPLETED],true))$family->update(['status'=>FamilyStatus::PAYOUT_SCHEDULED,'updated_by'=>request()->user()->id]);$payout->load('releaser');}
-        return response()->json(['success'=>true,'data'=>[
-            'affected_family'=>['id'=>$family->id,'surname'=>$family->household_head_surname,'given_name'=>$family->household_head_given_name,'middle_name'=>$family->household_head_middle_name,'household_head'=>$family->household_head_full_name,'birthdate'=>$family->birthdate?->format('Y-m-d'),'age'=>$family->age,'occupation'=>$family->occupation,'monthly_income'=>$family->monthly_income,'contact_number'=>$family->contact_number,'address'=>$family->complete_address,'barangay'=>$family->barangay?->name,'family_members'=>$family->familyMembers->count(),'household_size'=>$family->familyMembers->count()+1,'housing_condition'=>$family->housing_condition,'house_ownership'=>$family->house_ownership,'health_condition'=>$family->health_condition,'validation_status'=>$family->validationRecords->contains('status','Validated')?'Validated':'For Validation','workflow_status'=>$family->status?->value??$family->status],
-            'dafac'=>['reference'=>$family->dafacRecord?->reference_number],'tciss'=>['reference'=>$family->tcissMasterlistRecord?->source_reference],'evacuation_center'=>['id'=>$center->id,'name'=>$center->name],
-            'family_members'=>$family->familyMembers->map(fn($m)=>['name'=>$m->name,'birthdate'=>$m->birthdate?->format('Y-m-d'),'age'=>$m->age,'relationship'=>$m->relationship_to_head,'sex'=>$m->sex,'occupation'=>$m->occupation,'health_condition'=>$m->health_condition,'remarks_code'=>$m->remarks_codes,'remarks_label'=>$m->remarks_label,'remarks_url'=>route('disaster.payouts.centers.families.members.remarks',[$center,$family,$m])]),
-            'payout'=>$payout?['id'=>$payout->id,'status'=>$payout->status,'assistance_kind'=>$payout->assistance_kind,'quantity'=>$payout->quantity,'amount'=>$payout->amount,'provider'=>$payout->provider,'notes'=>$payout->photo_caption,'payout_date'=>$session?->payout_date?->format('Y-m-d')??today()->format('Y-m-d'),'released_at'=>$payout->released_at?->toIso8601String(),'released_by'=>$payout->releaser?->name??request()->user()->name,'has_photo'=>(bool)$payout->payout_photo_path,'photo_url'=>$payout->payout_photo_path?route('disaster.payouts.releases.photo',$payout):null,'can_release'=>$validated&&$payout->status==='Scheduled'&&request()->user()->can('manage payout schedules')]:null,
-            'defaults'=>['assistance_kind'=>$session?->assistance_type,'quantity'=>$session?->default_quantity,'amount'=>$session?->default_amount,'provider'=>$session?->provider,'payout_date'=>$session?->payout_date?->format('Y-m-d')],
-            'availability'=>['status'=>$validated?'VALIDATED':'FOR_VALIDATION','can_process'=>$validated&&request()->user()->can('manage payout schedules')],
-            'payout_history'=>$family->payoutReleases->map(fn($p)=>['status'=>$p->status,'assistance_kind'=>$p->assistance_kind,'amount'=>$p->amount,'provider'=>$p->provider,'released_at'=>$p->released_at?->toIso8601String(),'released_by'=>$p->releaser?->name]),
+        abort_unless($center->activeAssignments()->where('affected_family_id', $family->id)->exists(), 404, 'This family is not currently assigned to the evacuation center.');
+        $family->load(['barangay', 'dafacRecord', 'tcissMasterlistRecord', 'familyMembers', 'validationRecords', 'payoutReleases' => fn ($q) => $q->where('evacuation_center_id', $center->id)->latest(), 'payoutReleases.releaser']);
+        $validated = $family->validationRecords->contains('status', 'Validated');
+        $session = $center->payoutSessions()->latest('payout_date')->first();
+        $payout = $family->payoutReleases->first();
+        if ($validated && ! $payout) {
+            $schedule = PayoutSchedule::firstOrCreate(['disaster_id' => $family->disaster_id, 'title' => $center->name.' Validated Household Payout'], ['scheduled_date' => today(), 'venue' => $center->name, 'notes' => 'Automatically prepared after DAFAC household validation.', 'created_by' => request()->user()->id]);
+            $payout = PayoutRelease::firstOrCreate(['payout_schedule_id' => $schedule->id, 'affected_family_id' => $family->id], ['evacuation_center_id' => $center->id, 'status' => 'Scheduled', 'quantity' => 1]);
+            if (! in_array($family->status, [FamilyStatus::PAYOUT_SCHEDULED, FamilyStatus::ASSISTANCE_RELEASED, FamilyStatus::REQUIREMENTS_PENDING, FamilyStatus::REQUIREMENTS_COMPLETED], true)) {
+                $family->update(['status' => FamilyStatus::PAYOUT_SCHEDULED, 'updated_by' => request()->user()->id]);
+            }$payout->load('releaser');
+        }
+
+        return response()->json(['success' => true, 'data' => [
+            'affected_family' => ['id' => $family->id, 'surname' => $family->household_head_surname, 'given_name' => $family->household_head_given_name, 'middle_name' => $family->household_head_middle_name, 'household_head' => $family->household_head_full_name, 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'occupation' => $family->occupation, 'monthly_income' => $family->monthly_income, 'contact_number' => $family->contact_number, 'address' => $family->complete_address, 'barangay' => $family->barangay?->name, 'family_members' => $family->familyMembers->count(), 'household_size' => $family->familyMembers->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->house_ownership, 'health_condition' => $family->health_condition, 'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation', 'workflow_status' => $family->status?->value ?? $family->status],
+            'dafac' => ['reference' => $family->dafacRecord?->reference_number], 'tciss' => ['reference' => $family->tcissMasterlistRecord?->source_reference], 'evacuation_center' => ['id' => $center->id, 'name' => $center->name],
+            'family_members' => $family->familyMembers->map(fn ($m) => ['name' => $m->name, 'birthdate' => $m->birthdate?->format('Y-m-d'), 'age' => $m->age, 'relationship' => $m->relationship_to_head, 'sex' => $m->sex, 'occupation' => $m->occupation, 'health_condition' => $m->health_condition, 'remarks_code' => $m->remarks_codes, 'remarks_label' => $m->remarks_label, 'remarks_url' => route('disaster.payouts.centers.families.members.remarks', [$center, $family, $m])]),
+            'payout' => $payout ? ['id' => $payout->id, 'status' => $payout->status, 'assistance_kind' => $payout->assistance_kind, 'quantity' => $payout->quantity, 'amount' => $payout->amount, 'provider' => $payout->provider, 'notes' => $payout->photo_caption, 'payout_date' => $session?->payout_date?->format('Y-m-d') ?? today()->format('Y-m-d'), 'released_at' => $payout->released_at?->toIso8601String(), 'released_by' => $payout->releaser?->name ?? request()->user()->name, 'has_photo' => (bool) $payout->payout_photo_path, 'photo_url' => $payout->payout_photo_path ? route('disaster.payouts.releases.photo', $payout) : null, 'can_release' => $validated && $payout->status === 'Scheduled' && request()->user()->can('manage payout schedules')] : null,
+            'defaults' => ['assistance_kind' => $session?->assistance_type, 'quantity' => $session?->default_quantity, 'amount' => $session?->default_amount, 'provider' => $session?->provider, 'payout_date' => $session?->payout_date?->format('Y-m-d')],
+            'availability' => ['status' => $validated ? 'VALIDATED' : 'FOR_VALIDATION', 'can_process' => $validated && request()->user()->can('manage payout schedules')],
+            'payout_history' => $family->payoutReleases->map(fn ($p) => ['status' => $p->status, 'assistance_kind' => $p->assistance_kind, 'amount' => $p->amount, 'provider' => $p->provider, 'released_at' => $p->released_at?->toIso8601String(), 'released_by' => $p->releaser?->name]),
         ]]);
     }
 
@@ -557,28 +656,28 @@ class EvacuationCenterController extends Controller
     {
         abort_unless($center->activeAssignments()->where('affected_family_id', $family->id)->exists(), 404, 'This family is not currently assigned to the evacuation center.');
         $data = $request->validate([
-            'house_ownership' => ['nullable', Rule::in(['Owner','Renter','Sharer'])],
-            'health_condition' => ['nullable', Rule::in(['N/A','Dead','Injured','Missing','With Illness'])],
-            'housing_condition' => ['nullable', Rule::in(['Totally Damaged','Partially Damaged','Water Damage'])],
+            'house_ownership' => ['nullable', Rule::in(['Owner', 'Renter', 'Sharer'])],
+            'health_condition' => ['nullable', Rule::in(['N/A', 'Dead', 'Injured', 'Missing', 'With Illness'])],
+            'housing_condition' => ['nullable', Rule::in(['Totally Damaged', 'Partially Damaged', 'Water Damage'])],
         ]);
-        abort_if(collect($data)->filter(fn($value)=>filled($value))->isEmpty(), 422, 'Fill in at least one household condition before saving.');
-        if ($family->validationRecords()->where('status','Validated')->exists()) {
+        abort_if(collect($data)->filter(fn ($value) => filled($value))->isEmpty(), 422, 'Fill in at least one household condition before saving.');
+        if ($family->validationRecords()->where('status', 'Validated')->exists()) {
             throw ValidationException::withMessages(['validation' => 'This family has already been validated.']);
         }
 
         return DB::transaction(function () use ($data, $request, $family) {
-            $old = $family->only(['house_ownership','health_condition','housing_condition']);
-            $updates = collect($data)->filter(fn($value)=>filled($value))->all();
-            $family->update($updates + ['updated_by'=>$request->user()->id]);
-            $complete = filled($data['house_ownership']??null) && filled($data['health_condition']??null) && filled($data['housing_condition']??null);
-            $alreadyValidated = $family->validationRecords()->where('status','Validated')->exists();
-            if ($complete && !$alreadyValidated) {
-                ValidationRecord::create(['affected_family_id'=>$family->id,'validated_house_ownership'=>$family->house_ownership,'validated_housing_condition'=>$family->housing_condition,'notes'=>'Validated from the evacuation center DAFAC household form.','status'=>'Validated','validated_by'=>$request->user()->id,'validated_at'=>now()]);
+            $old = $family->only(['house_ownership', 'health_condition', 'housing_condition']);
+            $updates = collect($data)->filter(fn ($value) => filled($value))->all();
+            $family->update($updates + ['updated_by' => $request->user()->id]);
+            $complete = filled($data['house_ownership'] ?? null) && filled($data['health_condition'] ?? null) && filled($data['housing_condition'] ?? null);
+            $alreadyValidated = $family->validationRecords()->where('status', 'Validated')->exists();
+            if ($complete && ! $alreadyValidated) {
+                ValidationRecord::create(['affected_family_id' => $family->id, 'validated_house_ownership' => $family->house_ownership, 'validated_housing_condition' => $family->housing_condition, 'notes' => 'Validated from the evacuation center DAFAC household form.', 'status' => 'Validated', 'validated_by' => $request->user()->id, 'validated_at' => now()]);
             }
             $validated = $alreadyValidated || $complete;
-            AuditLog::create(['user_id'=>$request->user()->id,'auditable_type'=>$family::class,'auditable_id'=>$family->id,'action'=>$complete?'dafac_household_validated':'dafac_household_saved','old_values'=>$old,'new_values'=>$family->only(['house_ownership','health_condition','housing_condition']),'ip_address'=>$request->ip(),'user_agent'=>$request->userAgent()]);
+            AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $family::class, 'auditable_id' => $family->id, 'action' => $complete ? 'dafac_household_validated' : 'dafac_household_saved', 'old_values' => $old, 'new_values' => $family->only(['house_ownership', 'health_condition', 'housing_condition']), 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
 
-            return response()->json(['success'=>true,'message'=>$complete?'Household information validated successfully.':'Household information saved. Complete all required fields to validate.','data'=>['house_ownership'=>$family->house_ownership,'health_condition'=>$family->health_condition,'housing_condition'=>$family->housing_condition,'validation_status'=>$validated?'Validated':'For Validation']]);
+            return response()->json(['success' => true, 'message' => $complete ? 'Household information validated successfully.' : 'Household information saved. Complete all required fields to validate.', 'data' => ['house_ownership' => $family->house_ownership, 'health_condition' => $family->health_condition, 'housing_condition' => $family->housing_condition, 'validation_status' => $validated ? 'Validated' : 'For Validation']]);
         });
     }
 
@@ -588,16 +687,18 @@ class EvacuationCenterController extends Controller
         abort_unless($member->affected_family_id === $family->id, 404);
         $data = $this->validateMemberRemarks($request);
         $member->update(['remarks_codes' => $data['remarks_code']]);
+
         return response()->json(['success' => true, 'message' => 'Member remarks updated.', 'data' => ['remarks_code' => $member->remarks_codes, 'remarks_label' => $member->remarks_label]]);
     }
 
-    public function updatePersonAffectedMemberRemarks(Request $request, EvacuationCenter $center, PersonAffected $personAffected, PersonAffectedFamilyMember $member): JsonResponse
+    public function updatePersonAffectedMemberRemarks(Request $request, EvacuationCenter $center, PersonAffected $personAffected, PersonAffected $member): JsonResponse
     {
         abort_unless($personAffected->evacuation_center_id === $center->id, 404, 'This family is not assigned to this evacuation center.');
-        abort_unless($member->person_affected_id === $personAffected->id, 404);
+        abort_unless($member->family_head_control_number === $personAffected->control_number && $member->id !== $personAffected->id, 404);
         $data = $this->validateMemberRemarks($request);
         $member->update(['code' => $data['remarks_code']]);
-        return response()->json(['success' => true, 'message' => 'Member remarks updated.', 'data' => ['remarks_code' => $member->code, 'remarks_label' => $member->remarks_label]]);
+
+        return response()->json(['success' => true, 'message' => 'Member remarks updated.', 'data' => ['remarks_code' => $member->code, 'remarks_label' => MemberRemark::label($member->code)]]);
     }
 
     private function validateMemberRemarks(Request $request): array
@@ -608,41 +709,115 @@ class EvacuationCenterController extends Controller
     public function photo(PayoutRelease $release)
     {
         abort_unless($release->payout_photo_path && Storage::disk('local')->exists($release->payout_photo_path), 404);
+
         return Storage::disk('local')->response($release->payout_photo_path, 'beneficiary-payout-photo', ['Cache-Control' => 'private, max-age=300']);
     }
 
     public function availableFamilies(Request $request, EvacuationCenter $center): JsonResponse
     {
-        $families = AffectedFamily::with(['barangay','familyMembers','tcissMasterlistRecord','dafacRecord','evacuationCenter'])
-            ->where('disaster_id',$center->disaster_id)->whereIn('status',[FamilyStatus::SUBMITTED_FOR_PAYROLL,FamilyStatus::PAYOUT_PENDING,FamilyStatus::PAYOUT_SCHEDULED,FamilyStatus::ASSISTANCE_RELEASED,FamilyStatus::REQUIREMENTS_PENDING,FamilyStatus::REQUIREMENTS_COMPLETED])->when($request->filled('search'), function($q) use($request){$s='%'.$request->string('search').'%';$q->where(fn($q)=>$q->where('household_head_surname','like',$s)->orWhere('household_head_given_name','like',$s)->orWhere('complete_address','like',$s)->orWhereHas('tcissMasterlistRecord',fn($q)=>$q->where('source_reference','like',$s)));})->limit(100)->get();
-        return response()->json(['success'=>true,'data'=>$families->map(fn($f)=>['id'=>$f->id,'tciss'=>$f->tcissMasterlistRecord?->source_reference,'dafac'=>$f->dafacRecord?'DAFAC-'.str_pad((string)$f->dafacRecord->id,4,'0',STR_PAD_LEFT):null,'head'=>$f->household_head_full_name,'barangay'=>$f->barangay?->name,'address'=>$f->complete_address,'members'=>$f->familyMembers->count(),'housing'=>$f->housing_condition,'status'=>$f->status?->value ?? $f->status,'current_center'=>$f->evacuationCenter?->name])]);
+        $families = AffectedFamily::with(['barangay', 'familyMembers', 'tcissMasterlistRecord', 'dafacRecord', 'evacuationCenter'])
+            ->where('disaster_id', $center->disaster_id)->whereIn('status', [FamilyStatus::SUBMITTED_FOR_PAYROLL, FamilyStatus::PAYOUT_PENDING, FamilyStatus::PAYOUT_SCHEDULED, FamilyStatus::ASSISTANCE_RELEASED, FamilyStatus::REQUIREMENTS_PENDING, FamilyStatus::REQUIREMENTS_COMPLETED])->when($request->filled('search'), function ($q) use ($request) {
+                $s = '%'.$request->string('search').'%';
+                $q->where(fn ($q) => $q->where('household_head_surname', 'like', $s)->orWhere('household_head_given_name', 'like', $s)->orWhere('complete_address', 'like', $s)->orWhereHas('tcissMasterlistRecord', fn ($q) => $q->where('source_reference', 'like', $s)));
+            })->limit(100)->get();
+
+        return response()->json(['success' => true, 'data' => $families->map(fn ($f) => ['id' => $f->id, 'tciss' => $f->tcissMasterlistRecord?->source_reference, 'dafac' => $f->dafacRecord ? 'DAFAC-'.str_pad((string) $f->dafacRecord->id, 4, '0', STR_PAD_LEFT) : null, 'head' => $f->household_head_full_name, 'barangay' => $f->barangay?->name, 'address' => $f->complete_address, 'members' => $f->familyMembers->count(), 'housing' => $f->housing_condition, 'status' => $f->status?->value ?? $f->status, 'current_center' => $f->evacuationCenter?->name])]);
     }
 
     public function assign(Request $request, EvacuationCenter $center): JsonResponse
     {
-        $data=$request->validate(['family_ids'=>['required','array','min:1'],'family_ids.*'=>['integer','exists:affected_families,id'],'confirm_reassignment'=>['boolean']]);
-        return DB::transaction(function() use($data,$request,$center){
-            $active=$center->activeAssignments()->count(); if($active+count($data['family_ids'])>$center->capacity) throw ValidationException::withMessages(['family_ids'=>'Assignment exceeds the center capacity.']);
-            foreach(array_unique($data['family_ids']) as $id){ $family=AffectedFamily::lockForUpdate()->findOrFail($id); abort_unless(in_array($family->status,[FamilyStatus::SUBMITTED_FOR_PAYROLL,FamilyStatus::PAYOUT_PENDING],true),422,'Only submitted payroll families can be assigned.'); abort_unless($family->disaster_id===$center->disaster_id,422,'Family belongs to another disaster.'); $previous=EvacuationCenterAssignment::where('affected_family_id',$id)->where('disaster_id',$center->disaster_id)->where('status','ACTIVE')->lockForUpdate()->first(); if($previous && $previous->evacuation_center_id!==$center->id && empty($data['confirm_reassignment'])) throw ValidationException::withMessages(['family_ids'=>'A selected family is already assigned. Confirm reassignment to continue.']); if($previous && $previous->evacuation_center_id!==$center->id)$previous->update(['status'=>'REASSIGNED','unassigned_at'=>now()]); EvacuationCenterAssignment::firstOrCreate(['evacuation_center_id'=>$center->id,'affected_family_id'=>$id,'disaster_id'=>$center->disaster_id,'status'=>'ACTIVE'],['assigned_by'=>$request->user()->id,'assigned_at'=>now()]); $family->update(['evacuation_center_id'=>$center->id]); if($family->status===FamilyStatus::SUBMITTED_FOR_PAYROLL)$this->workflow->transition($family->refresh(),FamilyStatus::PAYOUT_PENDING,$request->user(),'evacuation_center_assigned',null,['evacuation_center_id'=>$center->id]); }
-            return response()->json(['success'=>true,'message'=>'Families assigned successfully.']);
+        $data = $request->validate(['family_ids' => ['required', 'array', 'min:1'], 'family_ids.*' => ['integer', 'exists:affected_families,id'], 'confirm_reassignment' => ['boolean']]);
+
+        return DB::transaction(function () use ($data, $request, $center) {
+            $active = $center->activeAssignments()->count();
+            if ($active + count($data['family_ids']) > $center->capacity) {
+                throw ValidationException::withMessages(['family_ids' => 'Assignment exceeds the center capacity.']);
+            }
+            foreach (array_unique($data['family_ids']) as $id) {
+                $family = AffectedFamily::lockForUpdate()->findOrFail($id);
+                abort_unless(in_array($family->status, [FamilyStatus::SUBMITTED_FOR_PAYROLL, FamilyStatus::PAYOUT_PENDING], true), 422, 'Only submitted payroll families can be assigned.');
+                abort_unless($family->disaster_id === $center->disaster_id, 422, 'Family belongs to another disaster.');
+                $previous = EvacuationCenterAssignment::where('affected_family_id', $id)->where('disaster_id', $center->disaster_id)->where('status', 'ACTIVE')->lockForUpdate()->first();
+                if ($previous && $previous->evacuation_center_id !== $center->id && empty($data['confirm_reassignment'])) {
+                    throw ValidationException::withMessages(['family_ids' => 'A selected family is already assigned. Confirm reassignment to continue.']);
+                } if ($previous && $previous->evacuation_center_id !== $center->id) {
+                    $previous->update(['status' => 'REASSIGNED', 'unassigned_at' => now()]);
+                } EvacuationCenterAssignment::firstOrCreate(['evacuation_center_id' => $center->id, 'affected_family_id' => $id, 'disaster_id' => $center->disaster_id, 'status' => 'ACTIVE'], ['assigned_by' => $request->user()->id, 'assigned_at' => now()]);
+                $family->update(['evacuation_center_id' => $center->id]);
+                if ($family->status === FamilyStatus::SUBMITTED_FOR_PAYROLL) {
+                    $this->workflow->transition($family->refresh(), FamilyStatus::PAYOUT_PENDING, $request->user(), 'evacuation_center_assigned', null, ['evacuation_center_id' => $center->id]);
+                }
+            }
+
+            return response()->json(['success' => true, 'message' => 'Families assigned successfully.']);
         });
     }
 
     public function availability(Request $request, EvacuationCenter $center): JsonResponse
     {
-        $data=$request->validate(['payout_availability'=>['required',Rule::in(['AVAILABLE','NOT_AVAILABLE','COMPLETED'])],'payout_date'=>['required_if:payout_availability,AVAILABLE','nullable','date'],'start_time'=>['required_if:payout_availability,AVAILABLE','nullable','date_format:H:i'],'end_time'=>['required_if:payout_availability,AVAILABLE','nullable','date_format:H:i','after:start_time'],'payout_area'=>['required_if:payout_availability,AVAILABLE','nullable','string','max:255'],'assigned_officer_id'=>['nullable','exists:users,id'],'assistance_type'=>['required_if:payout_availability,AVAILABLE','nullable','string','max:255'],'default_quantity'=>['nullable','numeric','min:0'],'default_amount'=>['nullable','numeric','min:0'],'provider'=>['required_if:payout_availability,AVAILABLE','nullable','string','max:255'],'notes'=>['nullable','string','max:2000']]);
-        if($data['payout_availability']==='AVAILABLE' && $center->status!=='ACTIVE') throw ValidationException::withMessages(['payout_availability'=>'Only an active evacuation center can be made available for payout.']);
-        return DB::transaction(function() use($data,$request,$center){$center=EvacuationCenter::lockForUpdate()->findOrFail($center->id);$old=$center->payout_availability;$session=null;if($data['payout_availability']==='AVAILABLE'){if(EvacuationCenterPayoutSession::where('evacuation_center_id',$center->id)->whereDate('payout_date',$data['payout_date'])->where('status','OPEN')->exists())throw ValidationException::withMessages(['payout_date'=>'An active payout session already exists for this center and date.']);$session=EvacuationCenterPayoutSession::create($data+['evacuation_center_id'=>$center->id,'disaster_id'=>$center->disaster_id,'status'=>'OPEN','created_by'=>$request->user()->id]);$legacy=PayoutSchedule::create(['disaster_id'=>$center->disaster_id,'title'=>$center->name.' Payout','scheduled_date'=>$data['payout_date'],'venue'=>$data['payout_area'],'notes'=>$data['notes']??null,'created_by'=>$request->user()->id]);foreach($center->activeAssignments()->with('family')->get() as $assignment){$family=$assignment->family;if($family->status!==FamilyStatus::PAYOUT_PENDING)continue;PayoutRelease::firstOrCreate(['payout_session_id'=>$session->id,'affected_family_id'=>$family->id],['payout_schedule_id'=>$legacy->id,'evacuation_center_id'=>$center->id,'status'=>'Scheduled','assistance_kind'=>$data['assistance_type'],'quantity'=>$data['default_quantity']??null,'amount'=>$data['default_amount']??null,'provider'=>$data['provider']]);$this->workflow->transition($family,FamilyStatus::PAYOUT_SCHEDULED,$request->user(),'payout_scheduled',null,['payout_session_id'=>$session->id]);}}else{$center->payoutSessions()->where('status','OPEN')->update(['status'=>$data['payout_availability']==='COMPLETED'?'COMPLETED':'CLOSED']);}$center->update(['payout_availability'=>$data['payout_availability'],'default_payout_date'=>$data['payout_date']??null,'default_payout_start_time'=>$data['start_time']??null,'default_payout_end_time'=>$data['end_time']??null,'updated_by'=>$request->user()->id]);AuditLog::create(['user_id'=>$request->user()->id,'auditable_type'=>$center::class,'auditable_id'=>$center->id,'action'=>'payout_availability_changed','old_values'=>['payout_availability'=>$old],'new_values'=>['payout_availability'=>$center->payout_availability,'payout_session_id'=>$session?->id],'ip_address'=>$request->ip(),'user_agent'=>$request->userAgent()]);return response()->json(['success'=>true,'message'=>$center->payout_availability==='AVAILABLE'?'Payout is now available.':'Payout availability disabled.','data'=>['availability'=>$center->payout_availability,'session'=>$session]]);});
+        $data = $request->validate(['payout_availability' => ['required', Rule::in(['AVAILABLE', 'NOT_AVAILABLE', 'COMPLETED'])], 'payout_date' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date'], 'start_time' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date_format:H:i'], 'end_time' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date_format:H:i', 'after:start_time'], 'payout_area' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'assigned_officer_id' => ['nullable', 'exists:users,id'], 'assistance_type' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'default_quantity' => ['nullable', 'numeric', 'min:0'], 'default_amount' => ['nullable', 'numeric', 'min:0'], 'provider' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'notes' => ['nullable', 'string', 'max:2000']]);
+        if ($data['payout_availability'] === 'AVAILABLE' && $center->status !== 'ACTIVE') {
+            throw ValidationException::withMessages(['payout_availability' => 'Only an active evacuation center can be made available for payout.']);
+        }
+
+        return DB::transaction(function () use ($data, $request, $center) {
+            $center = EvacuationCenter::lockForUpdate()->findOrFail($center->id);
+            $old = $center->payout_availability;
+            $session = null;
+            if ($data['payout_availability'] === 'AVAILABLE') {
+                if (EvacuationCenterPayoutSession::where('evacuation_center_id', $center->id)->whereDate('payout_date', $data['payout_date'])->where('status', 'OPEN')->exists()) {
+                    throw ValidationException::withMessages(['payout_date' => 'An active payout session already exists for this center and date.']);
+                }$session = EvacuationCenterPayoutSession::create($data + ['evacuation_center_id' => $center->id, 'disaster_id' => $center->disaster_id, 'status' => 'OPEN', 'created_by' => $request->user()->id]);
+                $legacy = PayoutSchedule::create(['disaster_id' => $center->disaster_id, 'title' => $center->name.' Payout', 'scheduled_date' => $data['payout_date'], 'venue' => $data['payout_area'], 'notes' => $data['notes'] ?? null, 'created_by' => $request->user()->id]);
+                foreach ($center->activeAssignments()->with('family')->get() as $assignment) {
+                    $family = $assignment->family;
+                    if ($family->status !== FamilyStatus::PAYOUT_PENDING) {
+                        continue;
+                    }PayoutRelease::firstOrCreate(['payout_session_id' => $session->id, 'affected_family_id' => $family->id], ['payout_schedule_id' => $legacy->id, 'evacuation_center_id' => $center->id, 'status' => 'Scheduled', 'assistance_kind' => $data['assistance_type'], 'quantity' => $data['default_quantity'] ?? null, 'amount' => $data['default_amount'] ?? null, 'provider' => $data['provider']]);
+                    $this->workflow->transition($family, FamilyStatus::PAYOUT_SCHEDULED, $request->user(), 'payout_scheduled', null, ['payout_session_id' => $session->id]);
+                }
+            } else {
+                $center->payoutSessions()->where('status', 'OPEN')->update(['status' => $data['payout_availability'] === 'COMPLETED' ? 'COMPLETED' : 'CLOSED']);
+            }$center->update(['payout_availability' => $data['payout_availability'], 'default_payout_date' => $data['payout_date'] ?? null, 'default_payout_start_time' => $data['start_time'] ?? null, 'default_payout_end_time' => $data['end_time'] ?? null, 'updated_by' => $request->user()->id]);
+            AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $center::class, 'auditable_id' => $center->id, 'action' => 'payout_availability_changed', 'old_values' => ['payout_availability' => $old], 'new_values' => ['payout_availability' => $center->payout_availability, 'payout_session_id' => $session?->id], 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
+
+            return response()->json(['success' => true, 'message' => $center->payout_availability === 'AVAILABLE' ? 'Payout is now available.' : 'Payout availability disabled.', 'data' => ['availability' => $center->payout_availability, 'session' => $session]]);
+        });
     }
 
     public function release(Request $request, PayoutRelease $release): JsonResponse
     {
-        $data=$request->validate(['photo'=>['nullable','image','mimes:jpeg,jpg,png,webp','max:8192'],'assistance_kind'=>['required','string'],'quantity'=>['nullable','numeric','min:0'],'amount'=>['required','numeric','min:0'],'provider'=>['required','string'],'photo_caption'=>['nullable','string','max:255'],'confirmed'=>['accepted'],'idempotency_key'=>['required','uuid']]);
-        $storedPath=null;
+        $data = $request->validate(['photo' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:8192'], 'assistance_kind' => ['required', 'string'], 'quantity' => ['nullable', 'numeric', 'min:0'], 'amount' => ['required', 'numeric', 'min:0'], 'provider' => ['required', 'string'], 'photo_caption' => ['nullable', 'string', 'max:255'], 'confirmed' => ['accepted'], 'idempotency_key' => ['required', 'uuid']]);
+        $storedPath = null;
         try {
-            return DB::transaction(function() use($data,$request,$release,&$storedPath){$release=PayoutRelease::with(['affectedFamily','center'])->lockForUpdate()->findOrFail($release->id);if($release->status==='Released')return response()->json(['success'=>false,'message'=>'This payout has already been released.'],409);if($release->status!=='Scheduled')return response()->json(['success'=>false,'message'=>'Only scheduled payouts can be released.'],422);if(!$release->affectedFamily->validationRecords()->where('status','Validated')->exists())return response()->json(['success'=>false,'message'=>'The household must be validated before payout.'],422);if(!$release->center?->activeAssignments()->where('affected_family_id',$release->affected_family_id)->exists())return response()->json(['success'=>false,'message'=>'The family is not assigned to this center.'],422);if(!$request->hasFile('photo')&&!$release->payout_photo_path)return response()->json(['success'=>false,'message'=>'A beneficiary payout photo is required.'],422);$file=$request->file('photo');if($file)$storedPath=$file->store('payout-photos','local');$path=$storedPath?:$release->payout_photo_path;$release->update(['status'=>'Released','payout_photo_path'=>$path,'release_photo_path'=>$path,'payout_photo_original_name'=>$file?->getClientOriginalName(),'payout_photo_mime_type'=>$file?->getMimeType(),'payout_photo_size'=>$file?->getSize(),'payout_photo_uploaded_at'=>$file?now():$release->payout_photo_uploaded_at,'assistance_kind'=>$data['assistance_kind'],'quantity'=>$data['quantity']??1,'amount'=>$data['amount'],'provider'=>$data['provider'],'photo_caption'=>$data['photo_caption']??null,'photo_taken_at'=>now(),'photo_uploaded_by'=>$request->user()->id,'released_by'=>$request->user()->id,'released_at'=>now(),'idempotency_key'=>$data['idempotency_key']]);$family=$this->workflow->transition($release->affectedFamily,FamilyStatus::ASSISTANCE_RELEASED,$request->user(),'payout_released',null,['payout_release_id'=>$release->id]);PostPayoutRequirement::firstOrCreate(['affected_family_id'=>$family->id]);$this->workflow->transition($family->refresh(),FamilyStatus::REQUIREMENTS_PENDING,$request->user(),'requirements_activated');AuditLog::create(['user_id'=>$request->user()->id,'auditable_type'=>$release::class,'auditable_id'=>$release->id,'action'=>'payout_released','new_values'=>['amount'=>$release->amount,'released_at'=>$release->released_at,'photo_mime_type'=>$release->payout_photo_mime_type],'ip_address'=>$request->ip(),'user_agent'=>$request->userAgent()]);return response()->json(['success'=>true,'message'=>'Payout released successfully.','data'=>['reference'=>'PAYOUT-'.str_pad((string)$release->id,6,'0',STR_PAD_LEFT),'status'=>'Released','photo_status'=>'Uploaded','photo_url'=>route('disaster.payouts.releases.photo',$release),'beneficiary_status'=>$family->refresh()->status->value,'household_head'=>$family->household_head_full_name,'amount'=>$release->amount,'released_at'=>$release->released_at->toIso8601String(),'released_by'=>$request->user()->name]]);});
+            return DB::transaction(function () use ($data, $request, $release, &$storedPath) {
+                $release = PayoutRelease::with(['affectedFamily', 'center'])->lockForUpdate()->findOrFail($release->id);
+                if ($release->status === 'Released') {
+                    return response()->json(['success' => false, 'message' => 'This payout has already been released.'], 409);
+                }if ($release->status !== 'Scheduled') {
+                    return response()->json(['success' => false, 'message' => 'Only scheduled payouts can be released.'], 422);
+                }if (! $release->affectedFamily->validationRecords()->where('status', 'Validated')->exists()) {
+                    return response()->json(['success' => false, 'message' => 'The household must be validated before payout.'], 422);
+                }if (! $release->center?->activeAssignments()->where('affected_family_id', $release->affected_family_id)->exists()) {
+                    return response()->json(['success' => false, 'message' => 'The family is not assigned to this center.'], 422);
+                }if (! $request->hasFile('photo') && ! $release->payout_photo_path) {
+                    return response()->json(['success' => false, 'message' => 'A beneficiary payout photo is required.'], 422);
+                }$file = $request->file('photo');
+                if ($file) {
+                    $storedPath = $file->store('payout-photos', 'local');
+                }$path = $storedPath ?: $release->payout_photo_path;
+                $release->update(['status' => 'Released', 'payout_photo_path' => $path, 'release_photo_path' => $path, 'payout_photo_original_name' => $file?->getClientOriginalName(), 'payout_photo_mime_type' => $file?->getMimeType(), 'payout_photo_size' => $file?->getSize(), 'payout_photo_uploaded_at' => $file ? now() : $release->payout_photo_uploaded_at, 'assistance_kind' => $data['assistance_kind'], 'quantity' => $data['quantity'] ?? 1, 'amount' => $data['amount'], 'provider' => $data['provider'], 'photo_caption' => $data['photo_caption'] ?? null, 'photo_taken_at' => now(), 'photo_uploaded_by' => $request->user()->id, 'released_by' => $request->user()->id, 'released_at' => now(), 'idempotency_key' => $data['idempotency_key']]);
+                $family = $this->workflow->transition($release->affectedFamily, FamilyStatus::ASSISTANCE_RELEASED, $request->user(), 'payout_released', null, ['payout_release_id' => $release->id]);
+                PostPayoutRequirement::firstOrCreate(['affected_family_id' => $family->id]);
+                $this->workflow->transition($family->refresh(), FamilyStatus::REQUIREMENTS_PENDING, $request->user(), 'requirements_activated');
+                AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $release::class, 'auditable_id' => $release->id, 'action' => 'payout_released', 'new_values' => ['amount' => $release->amount, 'released_at' => $release->released_at, 'photo_mime_type' => $release->payout_photo_mime_type], 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
+
+                return response()->json(['success' => true, 'message' => 'Payout released successfully.', 'data' => ['reference' => 'PAYOUT-'.str_pad((string) $release->id,6,'0',STR_PAD_LEFT), 'status' => 'Released', 'photo_status' => 'Uploaded', 'photo_url' => route('disaster.payouts.releases.photo',$release), 'beneficiary_status' => $family->refresh()->status->value, 'household_head' => $family->household_head_full_name, 'amount' => $release->amount, 'released_at' => $release->released_at->toIso8601String(), 'released_by' => $request->user()->name]]);
+            });
         } catch (\Throwable $exception) {
-            if ($storedPath) Storage::disk('local')->delete($storedPath);
+            if ($storedPath) {
+                Storage::disk('local')->delete($storedPath);
+            }
             throw $exception;
         }
     }

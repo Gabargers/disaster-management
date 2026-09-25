@@ -74,7 +74,7 @@ class DisasterWorkflowController extends Controller {
    ->with('barangay:id,name')
    ->with([
     'activeAssignments.family'=>fn($q)=>$q->withCount('familyMembers'),
-    'unlinkedPersonAffecteds'=>fn($q)=>$q->familyHeads()->withCount('familyMembers'),
+    'unlinkedPersonAffecteds'=>fn($q)=>$q->familyHeads()->withCount('householdMembers'),
    ])
    ->withCount([
     'activeAssignments as assigned_families_count',
@@ -89,7 +89,7 @@ class DisasterWorkflowController extends Controller {
      && (float)$center->latitude>=-90 && (float)$center->latitude<=90
      && (float)$center->longitude>=-180 && (float)$center->longitude<=180;
     $linkedIndividuals=$center->activeAssignments->sum(fn($assignment)=>$assignment->family?1+$assignment->family->family_members_count:0);
-    $tcissIndividuals=$center->unlinkedPersonAffecteds->sum(fn($person)=>1+$person->family_members_count);
+    $tcissIndividuals=$center->unlinkedPersonAffecteds->sum(fn($person)=>1+$person->household_members_count);
     return [
      'id'=>$center->id,
      'name'=>$center->name,
@@ -133,12 +133,12 @@ class DisasterWorkflowController extends Controller {
   $selected=array_values(array_intersect(array_keys($columns),(array)$r->input('columns',array_keys($columns))));
   if($selected===[])$selected=array_keys($columns);
   $incident=$r->filled('disaster_id')?Disaster::find($r->integer('disaster_id')):null;
-  $centers=EvacuationCenter::query()->createdCenters()->with(['barangay','affectedFamilies'=>function($q)use($r,$incident){$q->with('familyMembers')->when($incident,fn($q)=>$q->where('disaster_id',$incident->id))->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));},'unlinkedPersonAffecteds'=>function($q)use($r){$q->with('familyMembers')->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));}])->when($incident,fn($q)=>$q->where(fn($q)=>$q->where('disaster_id',$incident->id)->orWhereHas('affectedFamilies',fn($f)=>$f->where('disaster_id',$incident->id))))->when($r->filled('barangay_id'),fn($q)=>$q->where('barangay_id',$r->integer('barangay_id')))->when($r->filled('evacuation_center_id'),fn($q)=>$q->whereKey($r->integer('evacuation_center_id')))->when($r->filled('district'),fn($q)=>$q->where(fn($q)=>$q->where('district',$r->district)->orWhereHas('barangay',fn($b)=>$b->where('district',$r->district))))->where('is_active',true)->orderBy('district')->orderBy('name')->get();
+  $centers=EvacuationCenter::query()->createdCenters()->with(['barangay','affectedFamilies'=>function($q)use($r,$incident){$q->with('familyMembers')->when($incident,fn($q)=>$q->where('disaster_id',$incident->id))->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));},'unlinkedPersonAffecteds'=>function($q)use($r){$q->familyHeads()->with('householdMembers')->when($r->filled('date_from'),fn($q)=>$q->whereDate('created_at','>=',$r->date_from))->when($r->filled('date_to'),fn($q)=>$q->whereDate('created_at','<=',$r->date_to));}])->when($incident,fn($q)=>$q->where(fn($q)=>$q->where('disaster_id',$incident->id)->orWhereHas('affectedFamilies',fn($f)=>$f->where('disaster_id',$incident->id))))->when($r->filled('barangay_id'),fn($q)=>$q->where('barangay_id',$r->integer('barangay_id')))->when($r->filled('evacuation_center_id'),fn($q)=>$q->whereKey($r->integer('evacuation_center_id')))->when($r->filled('district'),fn($q)=>$q->where(fn($q)=>$q->where('district',$r->district)->orWhereHas('barangay',fn($b)=>$b->where('district',$r->district))))->where('is_active',true)->orderBy('district')->orderBy('name')->get();
   $rows=$centers->map(function($center){
    $families=$center->affectedFamilies; $externalFamilies=$center->unlinkedPersonAffecteds; $members=$families->flatMap->familyMembers;
    $people=$members->map(fn($m)=>['age'=>$m->age,'sex'=>$m->sex,'remarks'=>strtoupper((string)$m->remarks_codes)]);
    foreach($families as $family)$people->push(['age'=>$family->age,'sex'=>null,'remarks'=>'']);
-   foreach($externalFamilies as $family){$people->push(['age'=>$family->age,'sex'=>$family->sex,'remarks'=>strtoupper((string)$family->code)]);foreach($family->familyMembers as $member)$people->push(['age'=>$member->age,'sex'=>$member->sex,'remarks'=>strtoupper((string)$member->code)]);}
+   foreach($externalFamilies as $family){$people->push(['age'=>$family->age,'sex'=>$family->sex,'remarks'=>strtoupper((string)$family->code)]);foreach($family->householdMembers as $member)$people->push(['age'=>$member->age,'sex'=>$member->sex,'remarks'=>strtoupper((string)$member->code)]);}
    $remarks=fn(array $codes)=>$people->filter(fn($person)=>in_array($person['remarks'],$codes,true))->count();
    return ['district'=>$center->district?:($center->barangay?->district?:'Unassigned'),'barangay'=>$center->barangay?->name?:'Unassigned','evacuation_center'=>$center->name,'families'=>$families->count()+$externalFamilies->count(),'individuals'=>$people->count(),'male'=>$people->where('sex','Male')->count(),'female'=>$people->where('sex','Female')->count(),'age_0_4'=>$people->whereBetween('age',[0,4])->count(),'age_5_17'=>$people->whereBetween('age',[5,17])->count(),'age_18_59'=>$people->whereBetween('age',[18,59])->count(),'age_60_plus'=>$people->where('age','>=',60)->count(),'pwd'=>$remarks(['PWD','B']),'solo_parent'=>$remarks(['SP']),'lactating'=>$remarks(['LM','E']),'pregnant'=>$remarks(['PREG','D']),'four_ps'=>$remarks(['4PS']),'staff'=>0];
   });
