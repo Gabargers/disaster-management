@@ -48,7 +48,6 @@ class DisasterRoleSeeder extends Seeder
             'encoder' => [
                 'view disaster dashboard',
                 'view affected families',
-                'manage dafac intake',
                 'evacuation_center.view_assignment',
             ],
             'paymaster-cashier' => [

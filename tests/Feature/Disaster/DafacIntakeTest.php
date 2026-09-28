@@ -22,7 +22,7 @@ class DafacIntakeTest extends TestCase
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
-        $this->staff = User::where('email', 'encoder@gmail.com')->firstOrFail();
+        $this->staff = User::where('email', 'admin@gmail.com')->firstOrFail();
     }
 
     public function test_complete_intake_and_family_members_are_saved_atomically(): void
