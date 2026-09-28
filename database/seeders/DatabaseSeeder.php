@@ -2,11 +2,12 @@
 
 namespace Database\Seeders;
 
-use Database\Seeders\Auth\SuperAdminSeeder;
 use Database\Seeders\Auth\AdminSeeder;
-use Database\Seeders\Disaster\DisasterRoleSeeder;
-use Database\Seeders\Disaster\DisasterDemoDataSeeder;
+use Database\Seeders\Auth\SuperAdminSeeder;
 use Database\Seeders\Disaster\ConnectedLocationSampleSeeder;
+use Database\Seeders\Disaster\CswdoEvacuationCenterCatalogSeeder;
+use Database\Seeders\Disaster\DisasterDemoDataSeeder;
+use Database\Seeders\Disaster\DisasterRoleSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -15,6 +16,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             DisasterRoleSeeder::class,
+            CswdoEvacuationCenterCatalogSeeder::class,
             SuperAdminSeeder::class,
             AdminSeeder::class,
         ]);

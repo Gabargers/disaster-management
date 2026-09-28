@@ -89,6 +89,7 @@ class EvacuationCenterController extends Controller
                 ->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])->orderBy('name')->get(),
             'barangays' => Barangay::where('is_active', true)->orderBy('name')->get(), 'disasters' => Disaster::orderByDesc('incident_date')->get(),
             'officers' => User::where('is_active', true)->orderBy('name')->get(),
+            'canManageCenters' => request()->user()->can('manage evacuation centers'),
             'centerCatalogData' => CswdoEvacuationCenter::query()->whereNotNull('barangay_id')->orderBy('district')->orderBy('barangay_name')->orderBy('name')->get()->map(fn ($center) => [
                 'id' => $center->id, 'district' => $center->district, 'barangay' => $center->barangay_name,
                 'name' => $center->name, 'street' => $center->street, 'coordinator' => $center->coordinator,
@@ -278,59 +279,67 @@ class EvacuationCenterController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'cswdo_catalog_id' => ['required', 'integer', 'exists:cswdo_evacuation_center_catalog,id'],
             'disaster_type' => ['required', Rule::in(['Earthquake', 'Fire', 'Typhoon', 'Flood'])],
             'disaster_title' => ['required', 'string', 'max:255'],
             'date_opened' => ['required', 'date', 'before_or_equal:today'],
+            'capacity' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'description' => ['nullable', 'string', 'max:2000'],
         ]);
         $catalog = CswdoEvacuationCenter::whereNotNull('barangay_id')->findOrFail($request->integer('cswdo_catalog_id'));
-        if (! $catalog->capacity) {
-            throw ValidationException::withMessages(['cswdo_catalog_id' => 'The selected CSWDO center has no capacity in the official workbook.']);
+        $capacity = $catalog->capacity ?: ($validated['capacity'] ?? null);
+        if (! $capacity) {
+            throw ValidationException::withMessages(['capacity' => 'Enter the family capacity for this evacuation center.']);
         }
         $disasterTitle = trim((string) $request->input('disaster_title'));
         $incidentDate = $request->date('date_opened')->toDateString();
-        $disaster = Disaster::where('name', $disasterTitle)
-            ->where('type', $request->input('disaster_type'))
-            ->whereDate('incident_date', $incidentDate)
-            ->first() ?? Disaster::create([
-                'name' => $disasterTitle,
-                'type' => $request->input('disaster_type'),
-                'incident_date' => $incidentDate,
+        $center = DB::transaction(function () use ($request, $catalog, $capacity, $disasterTitle, $incidentDate) {
+            $disaster = Disaster::where('name', $disasterTitle)
+                ->where('type', $request->input('disaster_type'))
+                ->whereDate('incident_date', $incidentDate)
+                ->first() ?? Disaster::create([
+                    'name' => $disasterTitle,
+                    'type' => $request->input('disaster_type'),
+                    'incident_date' => $incidentDate,
+                    'is_active' => true,
+                ]);
+            if (EvacuationCenter::where('barangay_id', $catalog->barangay_id)
+                ->where('name', $catalog->name)
+                ->where('disaster_id', $disaster->id)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'cswdo_catalog_id' => 'This evacuation center has already been created for the selected disaster event.',
+                ]);
+            }
+            $data = [
+                'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $disaster->id,
+                'barangay_id' => $catalog->barangay_id, 'district' => $catalog->district,
+                'name' => $catalog->name, 'address' => $catalog->street,
+                'contact_person' => $catalog->coordinator, 'assistant_coordinator' => $catalog->assistant_coordinator,
+                'capacity' => $capacity, 'description' => $request->input('description'),
+                'date_opened' => $incidentDate, 'disaster_class_name' => $disasterTitle,
+                'status' => 'ACTIVE', 'payout_availability' => 'NOT_AVAILABLE',
+            ];
+            $coordinateSource = EvacuationCenter::query()
+                ->whereNull('disaster_id')
+                ->where('barangay_id', $catalog->barangay_id)
+                ->where(function ($query) use ($catalog) {
+                    $query->whereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper(trim($catalog->name))])
+                        ->orWhereRaw('UPPER(TRIM(address)) = ?', [mb_strtoupper(trim($catalog->street))]);
+                })
+                ->whereNotNull('latitude')->whereNotNull('longitude')->first();
+            if ($coordinateSource) {
+                $data['latitude'] = $coordinateSource->latitude;
+                $data['longitude'] = $coordinateSource->longitude;
+            }
+
+            return EvacuationCenter::create($data + [
+                'created_by' => $request->user()->id,
+                'updated_by' => $request->user()->id,
                 'is_active' => true,
             ]);
-        if (EvacuationCenter::where('barangay_id', $catalog->barangay_id)
-            ->where('name', $catalog->name)
-            ->where('disaster_id', $disaster->id)
-            ->exists()) {
-            throw ValidationException::withMessages([
-                'cswdo_catalog_id' => 'This evacuation center has already been created for the selected disaster event.',
-            ]);
-        }
-        $data = [
-            'cswdo_catalog_id' => $catalog->id, 'disaster_id' => $disaster->id,
-            'barangay_id' => $catalog->barangay_id, 'district' => $catalog->district,
-            'name' => $catalog->name, 'address' => $catalog->street,
-            'contact_person' => $catalog->coordinator, 'assistant_coordinator' => $catalog->assistant_coordinator,
-            'capacity' => $catalog->capacity, 'description' => $request->input('description'),
-            'date_opened' => $request->date('date_opened')->toDateString(),
-            'disaster_class_name' => $disasterTitle,
-            'status' => 'ACTIVE', 'payout_availability' => 'NOT_AVAILABLE',
-        ];
-        $coordinateSource = EvacuationCenter::query()
-            ->whereNull('disaster_id')
-            ->where('barangay_id', $catalog->barangay_id)
-            ->where(function ($query) use ($catalog) {
-                $query->whereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper(trim($catalog->name))])
-                    ->orWhereRaw('UPPER(TRIM(address)) = ?', [mb_strtoupper(trim($catalog->street))]);
-            })
-            ->whereNotNull('latitude')->whereNotNull('longitude')->first();
-        if ($coordinateSource) {
-            $data['latitude'] = $coordinateSource->latitude;
-            $data['longitude'] = $coordinateSource->longitude;
-        }
-        $center = EvacuationCenter::create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id, 'is_active' => $data['status'] === 'ACTIVE']);
+        });
 
         return response()->json(['success' => true, 'message' => 'Evacuation center created.', 'data' => $center], 201);
     }
@@ -379,11 +388,12 @@ class EvacuationCenterController extends Controller
             'center' => $center, 'session' => $center->payoutSessions->first(),
             'summary' => ['families' => $assigned, 'evacuees' => $assigned + $additionalMembers, 'available' => max(0, (int) $center->capacity - ($assigned + $additionalMembers)), 'validated' => $assignments->filter(fn ($assignment) => $assignment->family->validationRecords->contains('status', 'Validated'))->count()],
             'disasters' => Disaster::orderByDesc('incident_date')->get(['id', 'name']),
-            'officers' => User::permission('manage payout schedules')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'officers' => User::permission('process payouts')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'transferCenterOptions' => EvacuationCenter::where('disaster_id', $center->disaster_id)->whereKeyNot($center->id)->where('is_active', true)->where('status', 'ACTIVE')->with('barangay')->orderBy('name')->get()->map(fn ($item) => ['id' => $item->id, 'name' => $item->name, 'barangay' => $item->barangay?->name, 'barangay_id' => $item->barangay_id])->values(),
-            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->hasAnyRole(['admin', 'superadmin']),
-            'canCloseCenter' => request()->user()->hasAnyRole(['admin', 'superadmin']),
-            'canManageAvailability' => false,
+            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->can('manage evacuation centers'),
+            'canCloseCenter' => request()->user()->can('manage evacuation centers'),
+            'canManageCenters' => request()->user()->can('manage evacuation centers'),
+            'canManageAvailability' => request()->user()->can('manage payout availability'),
             'bfpCertificate' => $center->documents->first(),
         ]);
     }
@@ -645,9 +655,9 @@ class EvacuationCenterController extends Controller
             'affected_family' => ['id' => $family->id, 'surname' => $family->household_head_surname, 'given_name' => $family->household_head_given_name, 'middle_name' => $family->household_head_middle_name, 'household_head' => $family->household_head_full_name, 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'occupation' => $family->occupation, 'monthly_income' => $family->monthly_income, 'contact_number' => $family->contact_number, 'address' => $family->complete_address, 'barangay' => $family->barangay?->name, 'family_members' => $family->familyMembers->count(), 'household_size' => $family->familyMembers->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->house_ownership, 'health_condition' => $family->health_condition, 'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation', 'workflow_status' => $family->status?->value ?? $family->status],
             'dafac' => ['reference' => $family->dafacRecord?->reference_number], 'tciss' => ['reference' => $family->tcissMasterlistRecord?->source_reference], 'evacuation_center' => ['id' => $center->id, 'name' => $center->name],
             'family_members' => $family->familyMembers->map(fn ($m) => ['name' => $m->name, 'birthdate' => $m->birthdate?->format('Y-m-d'), 'age' => $m->age, 'relationship' => $m->relationship_to_head, 'sex' => $m->sex, 'occupation' => $m->occupation, 'health_condition' => $m->health_condition, 'remarks_code' => $m->remarks_codes, 'remarks_label' => $m->remarks_label, 'remarks_url' => route('disaster.payouts.centers.families.members.remarks', [$center, $family, $m])]),
-            'payout' => $payout ? ['id' => $payout->id, 'status' => $payout->status, 'assistance_kind' => $payout->assistance_kind, 'quantity' => $payout->quantity, 'amount' => $payout->amount, 'provider' => $payout->provider, 'notes' => $payout->photo_caption, 'payout_date' => $session?->payout_date?->format('Y-m-d') ?? today()->format('Y-m-d'), 'released_at' => $payout->released_at?->toIso8601String(), 'released_by' => $payout->releaser?->name ?? request()->user()->name, 'has_photo' => (bool) $payout->payout_photo_path, 'photo_url' => $payout->payout_photo_path ? route('disaster.payouts.releases.photo', $payout) : null, 'can_release' => $validated && $payout->status === 'Scheduled' && request()->user()->can('manage payout schedules')] : null,
+            'payout' => $payout ? ['id' => $payout->id, 'status' => $payout->status, 'assistance_kind' => $payout->assistance_kind, 'quantity' => $payout->quantity, 'amount' => $payout->amount, 'provider' => $payout->provider, 'notes' => $payout->photo_caption, 'payout_date' => $session?->payout_date?->format('Y-m-d') ?? today()->format('Y-m-d'), 'released_at' => $payout->released_at?->toIso8601String(), 'released_by' => $payout->releaser?->name ?? request()->user()->name, 'has_photo' => (bool) $payout->payout_photo_path, 'photo_url' => $payout->payout_photo_path ? route('disaster.payouts.releases.photo', $payout) : null, 'can_release' => $validated && $payout->status === 'Scheduled' && request()->user()->can('process payouts')] : null,
             'defaults' => ['assistance_kind' => $session?->assistance_type, 'quantity' => $session?->default_quantity, 'amount' => $session?->default_amount, 'provider' => $session?->provider, 'payout_date' => $session?->payout_date?->format('Y-m-d')],
-            'availability' => ['status' => $validated ? 'VALIDATED' : 'FOR_VALIDATION', 'can_process' => $validated && request()->user()->can('manage payout schedules')],
+            'availability' => ['status' => $validated ? 'VALIDATED' : 'FOR_VALIDATION', 'can_process' => $validated && request()->user()->can('process payouts')],
             'payout_history' => $family->payoutReleases->map(fn ($p) => ['status' => $p->status, 'assistance_kind' => $p->assistance_kind, 'amount' => $p->amount, 'provider' => $p->provider, 'released_at' => $p->released_at?->toIso8601String(), 'released_by' => $p->releaser?->name]),
         ]]);
     }
@@ -812,7 +822,7 @@ class EvacuationCenterController extends Controller
                 $this->workflow->transition($family->refresh(), FamilyStatus::REQUIREMENTS_PENDING, $request->user(), 'requirements_activated');
                 AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $release::class, 'auditable_id' => $release->id, 'action' => 'payout_released', 'new_values' => ['amount' => $release->amount, 'released_at' => $release->released_at, 'photo_mime_type' => $release->payout_photo_mime_type], 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
 
-                return response()->json(['success' => true, 'message' => 'Payout released successfully.', 'data' => ['reference' => 'PAYOUT-'.str_pad((string) $release->id,6,'0',STR_PAD_LEFT), 'status' => 'Released', 'photo_status' => 'Uploaded', 'photo_url' => route('disaster.payouts.releases.photo',$release), 'beneficiary_status' => $family->refresh()->status->value, 'household_head' => $family->household_head_full_name, 'amount' => $release->amount, 'released_at' => $release->released_at->toIso8601String(), 'released_by' => $request->user()->name]]);
+                return response()->json(['success' => true, 'message' => 'Payout released successfully.', 'data' => ['reference' => 'PAYOUT-'.str_pad((string) $release->id, 6, '0', STR_PAD_LEFT), 'status' => 'Released', 'photo_status' => 'Uploaded', 'photo_url' => route('disaster.payouts.releases.photo', $release), 'beneficiary_status' => $family->refresh()->status->value, 'household_head' => $family->household_head_full_name, 'amount' => $release->amount, 'released_at' => $release->released_at->toIso8601String(), 'released_by' => $request->user()->name]]);
             });
         } catch (\Throwable $exception) {
             if ($storedPath) {

@@ -8,6 +8,7 @@ use App\Models\Disaster\Disaster;
 use App\Models\Disaster\EvacuationCenter;
 use App\Models\Integration\PersonAffected;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class EvacuationMapTest extends TestCase
@@ -17,6 +18,7 @@ class EvacuationMapTest extends TestCase
     public function test_map_pages_use_the_extracted_boundary_layer_and_database_endpoint(): void
     {
         $user = User::factory()->create();
+        $user->givePermissionTo(Permission::findOrCreate('view disaster dashboard', 'web'));
 
         $this->actingAs($user)->get(route('evacuation-map'))
             ->assertOk()
@@ -32,6 +34,7 @@ class EvacuationMapTest extends TestCase
     public function test_center_endpoint_keeps_all_active_centers_for_live_counts_and_nulls_unusable_coordinates(): void
     {
         $user = User::factory()->create();
+        $user->givePermissionTo(Permission::findOrCreate('view disaster dashboard', 'web'));
         $barangay = Barangay::create(['name' => 'Map Test Barangay', 'is_active' => true]);
         $disaster = Disaster::create(['name' => 'Map Test Incident', 'type' => 'Flood', 'incident_date' => today(), 'is_active' => true]);
 

@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Disaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\Disaster\EvacuationCenter;
 use App\Models\Integration\PersonAffected;
 use App\Models\Integration\PersonAffectedStatus;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use App\Models\Disaster\EvacuationCenter;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class PersonAffectedController extends Controller
@@ -57,8 +57,7 @@ class PersonAffectedController extends Controller
                     || str_contains(mb_strtolower((string) $person->full_name), $needle);
 
                 if (! $headMatches) {
-                    $matchedMember = $person->householdMembers->first(fn ($member) =>
-                        str_contains(mb_strtolower((string) $member->control_number), $needle)
+                    $matchedMember = $person->householdMembers->first(fn ($member) => str_contains(mb_strtolower((string) $member->control_number), $needle)
                         || str_contains(mb_strtolower((string) $member->full_name), $needle)
                     );
                     $person->setAttribute('matched_family_member', $matchedMember);
@@ -117,7 +116,7 @@ class PersonAffectedController extends Controller
                 'can_assign' => request()->user()->can('evacuation_center.assign_family') && $centers->isNotEmpty(),
                 'has_centers' => $centers->isNotEmpty(),
                 'assign_url' => route('disaster.person-affecteds.assign-evacuation-center', $personAffected),
-                'create_url' => request()->user()->can('manage payout schedules') ? route('disaster.payouts.index') : null,
+                'create_url' => request()->user()->can('manage evacuation centers') ? route('disaster.payouts.index') : null,
                 'centers' => $centers->map(fn ($center) => [
                     'id' => $center->id, 'name' => $center->name,
                     'barangay' => $center->barangay?->name, 'capacity' => $center->capacity,

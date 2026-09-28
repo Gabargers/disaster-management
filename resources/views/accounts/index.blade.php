@@ -9,7 +9,7 @@
         <div class="card-header align-items-center">
             <div>
                 <h3 class="card-title fw-bold mb-1">Account Management</h3>
-                <div class="text-muted fs-7">Accounts for validators, coordinators, social workers, and payout staff.</div>
+                <div class="text-muted fs-7">Manage Admin, Paymaster / Cashier, and Encoder accounts.</div>
             </div>
             <div class="card-toolbar">
                 <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#createAccountModal">
@@ -50,15 +50,16 @@
                         <div class="col-md-6"><label class="form-label required">Email Address</label><input type="email" class="form-control form-control-solid" name="email" value="{{ old('email') }}" required></div>
                         <div class="col-md-6"><label class="form-label required">Contact Number</label><input class="form-control form-control-solid" name="contact_number" value="{{ old('contact_number') }}" placeholder="09171234567" required></div>
                         <div class="col-md-8">
-                            <label class="form-label required">Roles</label>
-                            <select class="form-select form-select-solid" name="roles[]" id="accountRoles" multiple required
-                                data-control="select2" data-placeholder="Select one or more roles"
+                            <label class="form-label required">Role</label>
+                            <select class="form-select form-select-solid" name="roles[]" id="accountRoles" required
+                                data-control="select2" data-placeholder="Select a role"
                                 data-dropdown-parent="#createAccountModal">
+                                <option value="">Select a role</option>
                                 @foreach ($roles as $value => $label)
                                     <option value="{{ $value }}" @selected(in_array($value, old('roles', []), true))>{{ $label }}</option>
                                 @endforeach
                             </select>
-                            <div class="form-text">You may assign more than one role to this account.</div>
+                            <div class="form-text">Each account receives one role with predefined access.</div>
                         </div>
                         <div class="col-md-4"><label class="form-label required">Status</label><select class="form-select form-select-solid" name="is_active" required><option value="1" @selected(old('is_active', '1') === '1')>Active</option><option value="0" @selected(old('is_active') === '0')>Inactive</option></select></div>
                         <div class="col-md-6"><label class="form-label required">Temporary Password</label><input type="password" class="form-control form-control-solid" name="password" minlength="8" required autocomplete="new-password"></div>
@@ -92,8 +93,9 @@
                         <div class="col-md-6"><label class="form-label required">Email Address</label><input type="email" class="form-control form-control-solid" id="editEmail" name="email" required></div>
                         <div class="col-md-6"><label class="form-label required">Contact Number</label><input class="form-control form-control-solid" id="editContactNumber" name="contact_number" placeholder="09171234567" required></div>
                         <div class="col-md-8">
-                            <label class="form-label required">Roles</label>
-                            <select class="form-select form-select-solid" id="editRoles" name="roles[]" multiple required data-control="select2" data-placeholder="Select one or more roles" data-dropdown-parent="#editAccountModal">
+                            <label class="form-label required">Role</label>
+                            <select class="form-select form-select-solid" id="editRoles" name="roles[]" required data-control="select2" data-placeholder="Select a role" data-dropdown-parent="#editAccountModal">
+                                <option value="">Select a role</option>
                                 @foreach ($roles as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
                             </select>
                         </div>

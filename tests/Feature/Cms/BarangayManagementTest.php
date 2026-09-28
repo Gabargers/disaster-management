@@ -35,8 +35,8 @@ class BarangayManagementTest extends TestCase
     public function test_barangay_datatable_returns_server_side_data(): void
     {
         Barangay::query()->create([
-            'name' => 'Fort Bonifacio',
-            'code' => 'FB',
+            'name' => 'QA Datatable Barangay',
+            'code' => 'QADB',
             'district' => 'District 2',
             'captain_name' => 'Juan Dela Cruz',
             'contact_number' => '09170000000',
@@ -47,20 +47,19 @@ class BarangayManagementTest extends TestCase
             ->getJson(route('superadmin.barangay.data', [
                 'draw' => 1,
                 'start' => 0,
-                'length' => 10,
+                'length' => 100,
             ]))
             ->assertOk()
-            ->assertJsonPath('recordsTotal', 1)
-            ->assertJsonPath('data.0.name', 'Fort Bonifacio')
-            ->assertJsonPath('data.0.code', 'FB');
+            ->assertJsonPath('recordsTotal', Barangay::count())
+            ->assertJsonFragment(['name' => 'QA Datatable Barangay', 'code' => 'QADB']);
     }
 
     public function test_barangay_can_be_created(): void
     {
         $this->actingAs($this->user)
             ->post(route('superadmin.barangay.store'), [
-                'name' => 'Bagumbayan',
-                'code' => 'bb',
+                'name' => 'QA New Barangay',
+                'code' => 'qanb',
                 'district' => 'District 1',
                 'captain_name' => 'Maria Santos',
                 'contact_number' => '09171111111',
@@ -69,8 +68,8 @@ class BarangayManagementTest extends TestCase
             ->assertRedirect();
 
         $this->assertDatabaseHas('barangays', [
-            'name' => 'Bagumbayan',
-            'code' => 'BB',
+            'name' => 'QA New Barangay',
+            'code' => 'QANB',
             'is_active' => true,
         ]);
     }

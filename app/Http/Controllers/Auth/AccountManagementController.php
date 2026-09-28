@@ -15,10 +15,9 @@ use Yajra\DataTables\Facades\DataTables;
 class AccountManagementController extends Controller
 {
     private const ROLE_LABELS = [
-        'cswdo-coordinator' => 'CSWDO Coordinator',
-        'disaster-operation-officer' => 'Validator / Disaster Operation Officer',
-        'cares-social-worker' => 'CARES Social Worker',
-        'payout-payroll-staff' => 'Payout / Payroll Staff',
+        'admin' => 'Admin',
+        'paymaster-cashier' => 'Paymaster / Cashier',
+        'encoder' => 'Encoder',
     ];
 
     public function index(): View
@@ -120,7 +119,8 @@ class AccountManagementController extends Controller
 
     private function ensureManagedAccount(User $account): void
     {
-        abort_if($account->hasAnyRole(['admin', 'superadmin']), 403, 'Administrator accounts cannot be modified here.');
+        abort_if($account->hasRole('superadmin'), 403, 'The superadmin account cannot be modified here.');
+        abort_if($account->is(request()->user()), 403, 'You cannot modify or delete your own account here.');
         abort_unless($account->hasAnyRole(StoreManagedAccountRequest::MANAGED_ROLES), 404);
     }
 

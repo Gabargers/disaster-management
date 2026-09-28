@@ -16,12 +16,12 @@ class ActivityLogTest extends TestCase
     {
         parent::setUp();
 
-        foreach (['superadmin', 'admin', 'cswdo-coordinator'] as $role) {
+        foreach (['superadmin', 'admin', 'encoder'] as $role) {
             Role::create(['name' => $role, 'guard_name' => 'web']);
         }
     }
 
-    public function test_only_superadmin_can_access_activity_logs(): void
+    public function test_admin_and_superadmin_can_access_activity_logs(): void
     {
         $superadmin = User::factory()->create();
         $superadmin->assignRole('superadmin');
@@ -30,8 +30,13 @@ class ActivityLogTest extends TestCase
 
         $this->actingAs($superadmin)->get(route('activity-logs.index'))
             ->assertOk()->assertSee('Activity Logs');
-        $this->actingAs($admin)->get(route('activity-logs.index'))->assertForbidden();
-        $this->actingAs($admin)->getJson(route('activity-logs.data'))->assertForbidden();
+        $this->actingAs($admin)->get(route('activity-logs.index'))
+            ->assertOk()->assertSee('Activity Logs');
+        $this->actingAs($admin)->getJson(route('activity-logs.data'))->assertOk();
+
+        $encoder = User::factory()->create();
+        $encoder->assignRole('encoder');
+        $this->actingAs($encoder)->get(route('activity-logs.index'))->assertForbidden();
     }
 
     public function test_authenticated_account_actions_are_recorded_without_sensitive_values(): void
@@ -42,7 +47,7 @@ class ActivityLogTest extends TestCase
         $this->actingAs($admin)->post(route('accounts.store'), [
             'first_name' => 'Logged', 'last_name' => 'Worker',
             'email' => 'logged.worker@example.com', 'contact_number' => '09171234567',
-            'roles' => ['cswdo-coordinator'], 'password' => 'SecretPassword123!',
+            'roles' => ['encoder'], 'password' => 'SecretPassword123!',
             'password_confirmation' => 'SecretPassword123!', 'is_active' => '1',
         ])->assertRedirect();
 
@@ -60,7 +65,7 @@ class ActivityLogTest extends TestCase
         $superadmin = User::factory()->create();
         $superadmin->assignRole('superadmin');
         $coordinator = User::factory()->create(['name' => 'Test Coordinator']);
-        $coordinator->assignRole('cswdo-coordinator');
+        $coordinator->assignRole('encoder');
 
         AuditLog::create([
             'user_id' => $coordinator->id,
@@ -76,6 +81,6 @@ class ActivityLogTest extends TestCase
         ]))->assertOk()
             ->assertJsonPath('recordsTotal', 1)
             ->assertJsonPath('data.0.account', 'Test Coordinator')
-            ->assertJsonPath('data.0.roles', 'Cswdo Coordinator');
+            ->assertJsonPath('data.0.roles', 'Encoder');
     }
 }

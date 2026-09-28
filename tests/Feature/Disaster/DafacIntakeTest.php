@@ -4,8 +4,10 @@ namespace Tests\Feature\Disaster;
 
 use App\Models\Auth\User;
 use App\Models\Disaster\AuditLog;
+use App\Models\Disaster\DafacRecord;
 use App\Models\Disaster\Disaster;
 use App\Models\Disaster\EvacuationCenter;
+use App\Models\Disaster\FamilyMember;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,7 +22,7 @@ class DafacIntakeTest extends TestCase
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
-        $this->staff = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $this->staff = User::where('email', 'encoder@gmail.com')->firstOrFail();
     }
 
     public function test_complete_intake_and_family_members_are_saved_atomically(): void
@@ -29,28 +31,29 @@ class DafacIntakeTest extends TestCase
         $response->assertCreated()->assertJsonPath('success', true)->assertJsonPath('data.status', 'DUPLICATE_CHECK_PENDING');
         $familyId = $response->json('data.affected_family_id');
         $this->assertDatabaseHas('affected_families', ['id' => $familyId, 'household_head_surname' => 'Villanueva', 'created_by' => $this->staff->id]);
-        $this->assertSame(3, \App\Models\Disaster\FamilyMember::where('affected_family_id', $familyId)->count());
+        $this->assertSame(3, FamilyMember::where('affected_family_id', $familyId)->count());
         $this->assertDatabaseHas('dafac_records', ['affected_family_id' => $familyId, 'attestation_confirmed' => true]);
-        $this->assertDatabaseHas('tciss_masterlist_records', ['affected_family_id'=>$familyId,'dafac_record_id'=>$response->json('data.dafac_id'),'source'=>'DAFAC_INTAKE']);
-        $this->assertDatabaseHas('evacuation_center_assignments', ['affected_family_id'=>$familyId,'evacuation_center_id'=>$this->validData()['evacuation_center_id'],'status'=>'ACTIVE']);
+        $this->assertDatabaseHas('tciss_masterlist_records', ['affected_family_id' => $familyId, 'dafac_record_id' => $response->json('data.dafac_id'), 'source' => 'DAFAC_INTAKE']);
+        $this->assertDatabaseHas('evacuation_center_assignments', ['affected_family_id' => $familyId, 'evacuation_center_id' => $this->validData()['evacuation_center_id'], 'status' => 'ACTIVE']);
         $this->assertTrue(AuditLog::where('auditable_id', $response->json('data.id'))->where('action', 'dafac_intake_created')->exists());
     }
 
     public function test_duplicate_submission_creates_only_one_intake(): void
     {
-        $before=\App\Models\Disaster\DafacRecord::count();
+        $before = DafacRecord::count();
         $this->actingAs($this->staff)->postJson(route('disaster.dafac.store'), $this->validData())->assertCreated();
         $this->actingAs($this->staff)->postJson(route('disaster.dafac.store'), $this->validData())->assertConflict();
-        $this->assertSame($before+1,\App\Models\Disaster\DafacRecord::count());
+        $this->assertSame($before + 1, DafacRecord::count());
     }
 
     public function test_nested_validation_errors_are_returned_and_nothing_is_saved(): void
     {
-        $before = \App\Models\Disaster\DafacRecord::count();
-        $data = $this->validData(); $data['family_members'][0]['birthdate'] = now()->addDay()->format('Y-m-d');
+        $before = DafacRecord::count();
+        $data = $this->validData();
+        $data['family_members'][0]['birthdate'] = now()->addDay()->format('Y-m-d');
         $this->actingAs($this->staff)->postJson(route('disaster.dafac.store'), $data)
             ->assertUnprocessable()->assertJsonValidationErrors('family_members.0.birthdate');
-        $this->assertSame($before, \App\Models\Disaster\DafacRecord::count());
+        $this->assertSame($before, DafacRecord::count());
     }
 
     public function test_user_without_permission_cannot_create_intake(): void
@@ -62,6 +65,7 @@ class DafacIntakeTest extends TestCase
     private function validData(): array
     {
         $center = EvacuationCenter::firstOrFail();
+
         return [
             'disaster_id' => $center->disaster_id ?: Disaster::firstOrFail()->id, 'barangay_id' => $center->barangay_id,
             'evacuation_center_id' => $center->id, 'intake_date' => now()->format('Y-m-d'),

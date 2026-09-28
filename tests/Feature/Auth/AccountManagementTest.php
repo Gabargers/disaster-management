@@ -16,7 +16,7 @@ class AccountManagementTest extends TestCase
     {
         parent::setUp();
 
-        foreach (['superadmin', 'admin', 'cswdo-coordinator', 'disaster-operation-officer', 'cares-social-worker', 'payout-payroll-staff'] as $role) {
+        foreach (['superadmin', 'admin', 'paymaster-cashier', 'encoder'] as $role) {
             Role::create(['name' => $role, 'guard_name' => 'web']);
         }
     }
@@ -36,7 +36,7 @@ class AccountManagementTest extends TestCase
     public function test_operational_users_cannot_access_account_management(): void
     {
         $user = User::factory()->create();
-        $user->assignRole('cswdo-coordinator');
+        $user->assignRole('encoder');
 
         $this->actingAs($user)->get(route('accounts.index'))->assertForbidden();
         $this->actingAs($user)->getJson(route('accounts.data'))->assertForbidden();
@@ -51,18 +51,17 @@ class AccountManagementTest extends TestCase
             'first_name' => 'Juan',
             'middle_name' => 'Santos',
             'last_name' => 'Dela Cruz',
-            'email' => 'validator@example.com',
+            'email' => 'encoder@example.com',
             'contact_number' => '09171234567',
-            'roles' => ['disaster-operation-officer', 'payout-payroll-staff'],
+            'roles' => ['encoder'],
             'password' => 'Temporary123!',
             'password_confirmation' => 'Temporary123!',
             'is_active' => '1',
         ])->assertRedirect()->assertSessionHas('success');
 
-        $account = User::where('email', 'validator@example.com')->firstOrFail();
+        $account = User::where('email', 'encoder@example.com')->firstOrFail();
         $this->assertSame('Juan Santos Dela Cruz', $account->name);
-        $this->assertTrue($account->hasRole('disaster-operation-officer'));
-        $this->assertTrue($account->hasRole('payout-payroll-staff'));
+        $this->assertTrue($account->hasRole('encoder'));
     }
 
     public function test_admin_cannot_assign_an_administrator_role(): void
@@ -75,16 +74,16 @@ class AccountManagementTest extends TestCase
             'last_name' => 'Admin',
             'email' => 'other-admin@example.com',
             'contact_number' => '09171234567',
-            'roles' => ['disaster-operation-officer', 'superadmin'],
+            'roles' => ['superadmin'],
             'password' => 'Temporary123!',
             'password_confirmation' => 'Temporary123!',
             'is_active' => '1',
-        ])->assertSessionHasErrors('roles.1');
+        ])->assertSessionHasErrors('roles.0');
 
         $this->assertDatabaseMissing('users', ['email' => 'other-admin@example.com']);
     }
 
-    public function test_admin_can_update_an_operational_account_with_multiple_roles(): void
+    public function test_admin_can_update_an_operational_account_role(): void
     {
         $admin = User::factory()->create();
         $admin->assignRole('admin');
@@ -92,7 +91,7 @@ class AccountManagementTest extends TestCase
             'email' => 'worker@example.com',
             'password' => 'OriginalPassword!',
         ]);
-        $account->assignRole('cswdo-coordinator');
+        $account->assignRole('encoder');
 
         $this->actingAs($admin)->put(route('accounts.update', $account), [
             'first_name' => 'Updated',
@@ -100,7 +99,7 @@ class AccountManagementTest extends TestCase
             'last_name' => 'Worker',
             'email' => 'updated.worker@example.com',
             'contact_number' => '09179999999',
-            'roles' => ['disaster-operation-officer', 'payout-payroll-staff'],
+            'roles' => ['paymaster-cashier'],
             'password' => '',
             'password_confirmation' => '',
             'is_active' => '0',
@@ -110,10 +109,7 @@ class AccountManagementTest extends TestCase
         $this->assertSame('Updated Middle Worker', $account->name);
         $this->assertFalse($account->is_active);
         $this->assertTrue(Hash::check('OriginalPassword!', $account->password));
-        $this->assertEqualsCanonicalizing(
-            ['disaster-operation-officer', 'payout-payroll-staff'],
-            $account->getRoleNames()->all()
-        );
+        $this->assertSame(['paymaster-cashier'], $account->getRoleNames()->all());
     }
 
     public function test_superadmin_can_delete_an_operational_account(): void
@@ -121,7 +117,7 @@ class AccountManagementTest extends TestCase
         $superadmin = User::factory()->create();
         $superadmin->assignRole('superadmin');
         $account = User::factory()->create();
-        $account->assignRole('cares-social-worker');
+        $account->assignRole('paymaster-cashier');
 
         $this->actingAs($superadmin)->delete(route('accounts.destroy', $account))
             ->assertRedirect()->assertSessionHas('success');
@@ -129,7 +125,7 @@ class AccountManagementTest extends TestCase
         $this->assertDatabaseMissing('users', ['id' => $account->id]);
     }
 
-    public function test_administrator_accounts_cannot_be_updated_or_deleted_through_managed_actions(): void
+    public function test_administrator_cannot_modify_own_account_through_managed_actions(): void
     {
         $superadmin = User::factory()->create();
         $superadmin->assignRole('superadmin');
@@ -138,12 +134,26 @@ class AccountManagementTest extends TestCase
 
         $payload = [
             'first_name' => 'Changed', 'last_name' => 'Admin', 'email' => $admin->email,
-            'contact_number' => '09171234567', 'roles' => ['cswdo-coordinator'],
+            'contact_number' => '09171234567', 'roles' => ['admin'],
             'password' => '', 'password_confirmation' => '', 'is_active' => '1',
         ];
 
-        $this->actingAs($superadmin)->put(route('accounts.update', $admin), $payload)->assertForbidden();
-        $this->actingAs($superadmin)->delete(route('accounts.destroy', $admin))->assertForbidden();
+        $this->actingAs($admin)->put(route('accounts.update', $admin), $payload)->assertForbidden();
+        $this->actingAs($admin)->delete(route('accounts.destroy', $admin))->assertForbidden();
         $this->assertTrue($admin->fresh()->hasRole('admin'));
+    }
+
+    public function test_only_the_three_supported_roles_are_shown(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin)->get(route('accounts.index'))
+            ->assertOk()
+            ->assertSee('Admin')
+            ->assertSee('Paymaster / Cashier')
+            ->assertSee('Encoder')
+            ->assertDontSee('CSWDO Coordinator')
+            ->assertDontSee('Disaster Operation Officer');
     }
 }

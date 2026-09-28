@@ -8,10 +8,9 @@ use Illuminate\Validation\Rule;
 class StoreManagedAccountRequest extends FormRequest
 {
     public const MANAGED_ROLES = [
-        'cswdo-coordinator',
-        'disaster-operation-officer',
-        'cares-social-worker',
-        'payout-payroll-staff',
+        'admin',
+        'paymaster-cashier',
+        'encoder',
     ];
 
     public function authorize(): bool
@@ -27,7 +26,7 @@ class StoreManagedAccountRequest extends FormRequest
             'last_name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email:rfc', 'max:255', 'unique:users,email'],
             'contact_number' => ['required', 'string', 'regex:/^(?:\+63|0)9\d{9}$/'],
-            'roles' => ['required', 'array', 'min:1'],
+            'roles' => ['required', 'array', 'size:1'],
             'roles.*' => ['required', 'distinct', Rule::in(self::MANAGED_ROLES)],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'is_active' => ['required', 'boolean'],

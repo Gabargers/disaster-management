@@ -3,10 +3,10 @@
 namespace Tests\Feature\Disaster;
 
 use App\Models\Auth\User;
-use App\Models\Integration\PersonAffected;
 use App\Models\Cms\Barangay;
 use App\Models\Disaster\Disaster;
 use App\Models\Disaster\EvacuationCenter;
+use App\Models\Integration\PersonAffected;
 use Database\Seeders\Disaster\DisasterRoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -18,7 +18,7 @@ class PersonAffectedPageTest extends TestCase
     public function test_tciss_user_can_view_api_person_affected_records(): void
     {
         $this->seed(DisasterRoleSeeder::class);
-        $user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $user = User::where('email', 'encoder@gmail.com')->firstOrFail();
         $person = PersonAffected::create([
             'control_number' => 'TCISS-CN-10001', 'full_name' => 'Juan Dela Cruz',
             'birthdate' => '1990-05-15', 'age' => 36, 'sex' => 'Male', 'code' => 'PWD',
@@ -54,7 +54,7 @@ class PersonAffectedPageTest extends TestCase
     public function test_person_affected_page_requires_tciss_permission(): void
     {
         $this->seed(DisasterRoleSeeder::class);
-        $user = User::where('email', 'payroll@gmail.com')->firstOrFail();
+        $user = User::where('email', 'paymaster@gmail.com')->firstOrFail();
 
         $this->actingAs($user)->get(route('disaster.person-affecteds.index'))->assertForbidden();
     }
@@ -62,7 +62,7 @@ class PersonAffectedPageTest extends TestCase
     public function test_family_members_are_hidden_from_the_list_but_can_find_the_family_head(): void
     {
         $this->seed(DisasterRoleSeeder::class);
-        $user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $user = User::where('email', 'encoder@gmail.com')->firstOrFail();
         $head = PersonAffected::create([
             'control_number' => 'FAMILY-A1', 'full_name' => 'JUAN FAMILY HEAD',
             'family_head_name' => 'JUAN FAMILY HEAD', 'family_head_control_number' => 'FAMILY-A1',
@@ -103,7 +103,8 @@ class PersonAffectedPageTest extends TestCase
     public function test_one_table_tciss_family_composition_flows_through_the_evacuation_center(): void
     {
         $this->seed(DisasterRoleSeeder::class);
-        $user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $user = User::factory()->create();
+        $user->assignRole('admin');
         $user->givePermissionTo('manage payout schedules');
         $barangay = Barangay::create(['name' => 'One Table Barangay', 'code' => 'OT-01', 'district' => 'District 1', 'is_active' => true]);
         $disaster = Disaster::create(['name' => 'One Table Incident', 'type' => 'Flood', 'incident_date' => today(), 'is_active' => true]);
@@ -153,7 +154,8 @@ class PersonAffectedPageTest extends TestCase
     public function test_person_can_only_be_assigned_after_an_active_evacuation_center_exists(): void
     {
         $this->seed(DisasterRoleSeeder::class);
-        $user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $user = User::factory()->create();
+        $user->assignRole('admin');
         $person = PersonAffected::create(['control_number' => 'CN-ASSIGN-1001', 'full_name' => 'Assignment Test']);
 
         $this->actingAs($user)->getJson(route('disaster.person-affecteds.show', $person))

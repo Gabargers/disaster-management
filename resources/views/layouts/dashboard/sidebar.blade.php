@@ -20,11 +20,10 @@
 
                 @php
                     $role = Auth::user()->getRoleNames()->first();
-                    $isSuperAdmin = auth()->user()->hasRole('superadmin');
                     $canManageAccounts = auth()->user()->hasAnyRole(['admin', 'superadmin']);
 
                     $canBarangay =
-                        $isSuperAdmin ||
+                        $canManageAccounts ||
                         auth()
                             ->user()
                             ->hasAnyPermission(['view barangay table', 'store barangay', 'update barangay', 'delete barangay']);
@@ -37,9 +36,10 @@
                     $canCms = $canBarangay && $barangayRoute;
                     $dashboardRoute = \Illuminate\Support\Facades\Route::has($role . '.dashboard') ? $role . '.dashboard' : 'dashboard';
                     $disasterModules = [
-                        ['route' => 'disaster.person-affecteds.index', 'label' => 'Affected Families', 'icon' => 'ki-profile-user', 'permission' => 'manage tciss masterlist'],
+                        ['route' => 'disaster.dafac.index', 'label' => 'DAFAC Intake', 'icon' => 'ki-notepad-edit', 'permission' => 'manage dafac intake'],
+                        ['route' => 'disaster.person-affecteds.index', 'label' => 'Affected Families', 'icon' => 'ki-profile-user', 'permission' => 'view affected families'],
                         ['route' => 'disaster.payroll.index', 'label' => 'Payroll', 'icon' => 'ki-dollar', 'permission' => 'prepare payroll list'],
-                        ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation', 'permission' => 'manage payout schedules'],
+                        ['route' => 'disaster.payouts.index', 'label' => 'Evacuation Center', 'icon' => 'ki-geolocation', 'permission' => 'view evacuation centers'],
                         ['route' => 'disaster.reports.index', 'label' => 'Reports', 'icon' => 'ki-document', 'permission' => 'view disaster reports'],
                     ];
                     $visibleDisasterModules = collect($disasterModules)
@@ -84,7 +84,7 @@
                     </div>
                 @endforeach
 
-                @if ($canManageAccounts && auth()->user()->can('manage payout schedules'))
+                @if ($canManageAccounts && auth()->user()->can('manage evacuation centers'))
                     <div class="menu-item py-2">
                         <a href="{{ route('disaster.payouts.history') }}" data-sidebar-route="disaster.payouts.history"
                             class="menu-link menu-center flex-column {{ request()->routeIs('disaster.payouts.history') ? 'active' : '' }}" style="gap: 2px;">
@@ -111,7 +111,7 @@
                     </div>
                 @endif
 
-                @if ($isSuperAdmin)
+                @if ($canManageAccounts)
                     <div class="menu-item py-2">
                         <a href="{{ route('activity-logs.index') }}" data-sidebar-route="activity-logs.index"
                             class="menu-link menu-center flex-column {{ request()->routeIs('activity-logs.*') ? 'active' : '' }}" style="gap: 2px;">

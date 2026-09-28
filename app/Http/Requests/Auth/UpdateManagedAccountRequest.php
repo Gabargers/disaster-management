@@ -26,7 +26,7 @@ class UpdateManagedAccountRequest extends FormRequest
             'last_name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email:rfc', 'max:255', Rule::unique('users', 'email')->ignore($account)],
             'contact_number' => ['required', 'string', 'regex:/^(?:\+63|0)9\d{9}$/'],
-            'roles' => ['required', 'array', 'min:1'],
+            'roles' => ['required', 'array', 'size:1'],
             'roles.*' => ['required', 'distinct', Rule::in(StoreManagedAccountRequest::MANAGED_ROLES)],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
             'is_active' => ['required', 'boolean'],

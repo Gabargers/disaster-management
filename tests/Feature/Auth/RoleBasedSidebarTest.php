@@ -17,45 +17,45 @@ class RoleBasedSidebarTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
-    public function test_coordinator_only_sees_sidebar_modules_allowed_by_its_permissions(): void
+    public function test_encoder_only_sees_encoding_modules(): void
     {
-        $coordinator = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
 
-        $response = $this->actingAs($coordinator)->get(route('dashboard'))->assertOk();
+        $response = $this->actingAs($encoder)->get(route('dashboard'))->assertOk();
 
-        $response->assertDontSee('data-sidebar-route="disaster.tciss.index"', false)
+        $response->assertSee('data-sidebar-route="disaster.dafac.index"', false)
             ->assertSee('data-sidebar-route="disaster.person-affecteds.index"', false)
-            ->assertSee('data-sidebar-route="disaster.reports.index"', false)
+            ->assertDontSee('data-sidebar-route="disaster.reports.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.payroll.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.payouts.index"', false)
             ->assertDontSee('data-sidebar-route="accounts.index"', false);
     }
 
-    public function test_payroll_staff_only_sees_sidebar_modules_allowed_by_its_permissions(): void
+    public function test_paymaster_cashier_only_sees_payout_modules(): void
     {
-        $payroll = User::where('email', 'payroll@gmail.com')->firstOrFail();
+        $payroll = User::where('email', 'paymaster@gmail.com')->firstOrFail();
 
         $response = $this->actingAs($payroll)->get(route('dashboard'))->assertOk();
 
         $response->assertSee('data-sidebar-route="disaster.payroll.index"', false)
             ->assertSee('data-sidebar-route="disaster.payouts.index"', false)
             ->assertSee('data-sidebar-route="disaster.reports.index"', false)
-            ->assertDontSee('data-sidebar-route="disaster.tciss.index"', false)
+            ->assertDontSee('data-sidebar-route="disaster.dafac.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.person-affecteds.index"', false)
             ->assertDontSee('data-sidebar-route="accounts.index"', false);
     }
 
-    public function test_multiple_roles_combine_their_allowed_sidebar_modules(): void
+    public function test_role_routes_are_enforced_server_side(): void
     {
-        $user = User::factory()->create();
-        $user->syncRoles(['cswdo-coordinator', 'payout-payroll-staff']);
+        $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
+        $paymaster = User::where('email', 'paymaster@gmail.com')->firstOrFail();
 
-        $response = $this->actingAs($user)->get(route('dashboard'))->assertOk();
+        $this->actingAs($encoder)->get(route('disaster.dafac.index'))->assertOk();
+        $this->actingAs($encoder)->get(route('disaster.payouts.index'))->assertForbidden();
+        $this->actingAs($encoder)->get(route('disaster.payroll.index'))->assertForbidden();
 
-        foreach (['disaster.payroll.index', 'disaster.payouts.index', 'disaster.reports.index'] as $route) {
-            $response->assertSee('data-sidebar-route="'.$route.'"', false);
-        }
-
-        $response->assertDontSee('data-sidebar-route="disaster.tciss.index"', false);
+        $this->actingAs($paymaster)->get(route('disaster.payouts.index'))->assertOk();
+        $this->actingAs($paymaster)->get(route('disaster.dafac.index'))->assertForbidden();
+        $this->actingAs($paymaster)->get(route('accounts.index'))->assertForbidden();
     }
 }

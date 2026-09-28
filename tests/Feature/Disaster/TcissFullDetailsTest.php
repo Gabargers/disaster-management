@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Disaster;
 
+use App\Enums\FamilyStatus;
 use App\Models\Auth\User;
 use App\Models\Disaster\TcissMasterlistRecord;
 use App\Models\Disaster\UploadedDocument;
@@ -21,7 +22,7 @@ class TcissFullDetailsTest extends TestCase
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
-        $this->user = User::where('email', 'coordinator@gmail.com')->firstOrFail();
+        $this->user = User::where('email', 'admin@gmail.com')->firstOrFail();
     }
 
     public function test_complete_dafac_record_is_returned(): void
@@ -90,7 +91,7 @@ class TcissFullDetailsTest extends TestCase
     public function test_draft_household_moves_to_tciss_verified_when_tciss_is_verified(): void
     {
         $record = TcissMasterlistRecord::whereHas('affectedFamily')->firstOrFail();
-        $record->affectedFamily->update(['status' => \App\Enums\FamilyStatus::DRAFT]);
+        $record->affectedFamily->update(['status' => FamilyStatus::DRAFT]);
         $record->update(['verification_status' => 'Needs Review', 'verified_by' => null, 'verified_at' => null]);
 
         $this->actingAs($this->user)
@@ -99,7 +100,7 @@ class TcissFullDetailsTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame(
-            \App\Enums\FamilyStatus::TCISS_VERIFIED,
+            FamilyStatus::TCISS_VERIFIED,
             $record->affectedFamily->refresh()->status
         );
         $this->assertDatabaseHas('workflow_histories', [

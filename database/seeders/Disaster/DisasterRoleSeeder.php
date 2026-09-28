@@ -18,12 +18,16 @@ class DisasterRoleSeeder extends Seeder
 
         $permissions = collect([
             'view disaster dashboard',
+            'view affected families',
             'manage tciss masterlist',
             'manage dafac intake',
             'resolve duplicate checks',
             'manage validation records',
             'prepare payroll list',
             'manage payout schedules',
+            'view evacuation centers',
+            'manage evacuation centers',
+            'process payouts',
             'manage payout availability',
             'manage evacuation center assignments',
             'evacuation_center.view_assignment',
@@ -41,33 +45,18 @@ class DisasterRoleSeeder extends Seeder
 
         $roles = [
             'admin' => $permissions->pluck('name')->all(),
-            'cswdo-coordinator' => [
+            'encoder' => [
                 'view disaster dashboard',
-                'manage tciss masterlist',
+                'view affected families',
                 'manage dafac intake',
-                'resolve duplicate checks',
-                'manage evacuation center assignments',
                 'evacuation_center.view_assignment',
-                'evacuation_center.assign_family',
-                'evacuation_center.transfer_family',
-                'view disaster reports',
             ],
-            'disaster-operation-officer' => [
-                'view disaster dashboard',
-                'resolve duplicate checks',
-                'manage validation records',
-                'view disaster reports',
-            ],
-            'cares-social-worker' => [
-                'view disaster dashboard',
-                'manage dafac intake',
-                'manage validation records',
-                'manage post payout requirements',
-            ],
-            'payout-payroll-staff' => [
+            'paymaster-cashier' => [
                 'view disaster dashboard',
                 'prepare payroll list',
-                'manage payout schedules',
+                'view evacuation centers',
+                'process payouts',
+                'manage payout availability',
                 'manage post payout requirements',
                 'view disaster reports',
             ],
@@ -80,6 +69,8 @@ class DisasterRoleSeeder extends Seeder
             ])->syncPermissions($rolePermissions);
         }
 
+        $this->migrateLegacyOperationalRoles();
+
         // Superadmin is created by the auth seeder, but this disaster seeder
         // may run later when new permissions are introduced. Keep it current
         // without removing any permissions already granted elsewhere.
@@ -87,10 +78,38 @@ class DisasterRoleSeeder extends Seeder
             $superadmin->givePermissionTo(Permission::where('guard_name', 'web')->get());
         }
 
-        $this->createUser('coordinator@gmail.com', 'CSWDO Coordinator', 'cswdo-coordinator');
-        $this->createUser('operation@gmail.com', 'Disaster Operation Officer', 'disaster-operation-officer');
-        $this->createUser('socialworker@gmail.com', 'CARES Social Worker', 'cares-social-worker');
-        $this->createUser('payroll@gmail.com', 'Payout Payroll Staff', 'payout-payroll-staff');
+        if (app()->environment('testing')) {
+            $this->createUser('encoder@gmail.com', 'System Encoder', 'encoder');
+            $this->createUser('paymaster@gmail.com', 'Paymaster Cashier', 'paymaster-cashier');
+        }
+    }
+
+    private function migrateLegacyOperationalRoles(): void
+    {
+        $legacyNames = [
+            'cswdo-coordinator',
+            'disaster-operation-officer',
+            'cares-social-worker',
+            'payout-payroll-staff',
+        ];
+
+        User::whereHas('roles', fn ($query) => $query->whereIn('name', $legacyNames))
+            ->with('roles')->get()->each(function (User $user) use ($legacyNames): void {
+                if ($user->hasAnyRole(['admin', 'superadmin'])) {
+                    foreach ($legacyNames as $legacyName) {
+                        if ($user->hasRole($legacyName)) {
+                            $user->removeRole($legacyName);
+                        }
+                    }
+
+                    return;
+                }
+
+                $replacement = $user->hasRole('payout-payroll-staff') ? 'paymaster-cashier' : 'encoder';
+                $user->syncRoles([$replacement]);
+            });
+
+        Role::where('guard_name', 'web')->whereIn('name', $legacyNames)->get()->each->delete();
     }
 
     private function createUser(string $email, string $name, string $role): void

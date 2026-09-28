@@ -1,14 +1,14 @@
 <?php
 
-use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\AccountManagementController;
 use App\Http\Controllers\Auth\ActivityLogController;
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Cms\BarangayController;
-use App\Http\Controllers\Disaster\TcissMasterlistController;
-use App\Http\Controllers\Disaster\EvacuationCenterController;
 use App\Http\Controllers\Disaster\DafacIntakeController;
 use App\Http\Controllers\Disaster\DisasterWorkflowController;
+use App\Http\Controllers\Disaster\EvacuationCenterController;
 use App\Http\Controllers\Disaster\PersonAffectedController;
+use App\Http\Controllers\Disaster\TcissMasterlistController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AuthController::class, 'index'])->name('home');
@@ -20,10 +20,10 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'active'])->group(function () {
-    Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->name('dashboard');
-    Route::get('/evacuation-map', [DisasterWorkflowController::class, 'evacuationMap'])->name('evacuation-map');
-    Route::get('/evacuation-map/display', [DisasterWorkflowController::class, 'evacuationMapDisplay'])->name('evacuation-map.display');
-    Route::get('/evacuation-map/centers', [DisasterWorkflowController::class, 'evacuationMapCenters'])->name('evacuation-map.centers');
+    Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->middleware('permission:view disaster dashboard')->name('dashboard');
+    Route::get('/evacuation-map', [DisasterWorkflowController::class, 'evacuationMap'])->middleware('permission:view disaster dashboard')->name('evacuation-map');
+    Route::get('/evacuation-map/display', [DisasterWorkflowController::class, 'evacuationMapDisplay'])->middleware('permission:view disaster dashboard')->name('evacuation-map.display');
+    Route::get('/evacuation-map/centers', [DisasterWorkflowController::class, 'evacuationMapCenters'])->middleware('permission:view disaster dashboard')->name('evacuation-map.centers');
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
@@ -42,7 +42,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::controller(ActivityLogController::class)
         ->prefix('activity-logs')
         ->name('activity-logs.')
-        ->middleware('role:superadmin')
+        ->middleware('role:admin|superadmin')
         ->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('/data', 'data')->name('data');
@@ -51,15 +51,15 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::prefix('disaster')->name('disaster.')->group(function () {
         Route::get('/tciss-masterlist', [TcissMasterlistController::class, 'index'])->middleware('permission:manage tciss masterlist')->name('tciss.index');
         Route::get('/tciss-person-affecteds', [PersonAffectedController::class, 'index'])
-            ->middleware('permission:manage tciss masterlist')->name('person-affecteds.index');
+            ->middleware('permission:view affected families')->name('person-affecteds.index');
         Route::get('/tciss-person-affecteds/{personAffected}', [PersonAffectedController::class, 'show'])
-            ->middleware('permission:manage tciss masterlist')->name('person-affecteds.show');
+            ->middleware('permission:view affected families')->name('person-affecteds.show');
         Route::post('/tciss-person-affecteds/{personAffected}/evacuation-center', [PersonAffectedController::class, 'assignEvacuationCenter'])
             ->middleware(['permission:manage tciss masterlist', 'permission:evacuation_center.assign_family'])->name('person-affecteds.assign-evacuation-center');
         Route::get('/tciss-masterlist/{record}/full-details', [TcissMasterlistController::class, 'fullDetails'])->middleware('permission:manage tciss masterlist')->name('tciss.full-details');
         Route::patch('/tciss-masterlist/{record}/verify', [TcissMasterlistController::class, 'verify'])
             ->middleware('permission:manage tciss masterlist')->name('tciss.verify');
-        Route::match(['post','put'], '/tciss-masterlist/{record}/evacuation-center-assignment', [TcissMasterlistController::class, 'assignEvacuationCenter'])
+        Route::match(['post', 'put'], '/tciss-masterlist/{record}/evacuation-center-assignment', [TcissMasterlistController::class, 'assignEvacuationCenter'])
             ->middleware(['permission:manage tciss masterlist', 'permission:evacuation_center.assign_family'])->name('tciss.assign-evacuation-center');
         Route::get('/tciss-masterlist/documents/{document}', [TcissMasterlistController::class, 'document'])
             ->middleware(['signed', 'permission:manage tciss masterlist'])->name('tciss.documents.show');
@@ -70,8 +70,8 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/dafac-intake/{dafacRecord}', 'show')->name('dafac.show');
         });
 
-        Route::get('/affected-families/{family}', [DisasterWorkflowController::class, 'show'])->name('families.show');
-        Route::get('/barangays/{barangay}/evacuation-centers', [EvacuationCenterController::class, 'centersForBarangay'])->name('barangays.evacuation-centers');
+        Route::get('/affected-families/{family}', [DisasterWorkflowController::class, 'show'])->middleware('permission:view affected families')->name('families.show');
+        Route::get('/barangays/{barangay}/evacuation-centers', [EvacuationCenterController::class, 'centersForBarangay'])->middleware('permission:manage dafac intake|evacuation_center.assign_family|view evacuation centers')->name('barangays.evacuation-centers');
         Route::get('/duplicate-checking', [DisasterWorkflowController::class, 'duplicates'])->middleware('permission:resolve duplicate checks')->name('duplicates.index');
         Route::post('/duplicate-checking/{family}/resolve', [DisasterWorkflowController::class, 'resolveDuplicate'])->middleware('permission:resolve duplicate checks')->name('duplicates.resolve');
         Route::get('/validation', [DisasterWorkflowController::class, 'validations'])->middleware('permission:manage validation records')->name('validation.index');
@@ -81,29 +81,29 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/payroll-preparation/families/{family}/requirements', [DisasterWorkflowController::class, 'payrollRequirements'])->middleware('permission:prepare payroll list')->name('payroll.requirements');
         Route::post('/payroll-preparation', [DisasterWorkflowController::class, 'payrollAction'])->middleware('permission:prepare payroll list')->name('payroll.action');
 
-        Route::controller(EvacuationCenterController::class)->middleware('permission:manage payout schedules')->group(function () {
-            Route::get('/payouts', 'index')->name('payouts.index');
-            Route::get('/payouts/evacuation-history', 'history')->middleware('role:admin|superadmin')->name('payouts.history');
-            Route::get('/payouts/evacuation-history/export', 'exportHistory')->middleware('role:admin|superadmin')->name('payouts.history.export');
-            Route::post('/payouts/evacuation-centers', 'store')->name('payouts.centers.store');
-            Route::patch('/payouts/evacuation-centers/{center}/close', 'close')->middleware('role:admin|superadmin')->name('payouts.centers.close');
-            Route::put('/payouts/evacuation-centers/{center}', 'update')->name('payouts.centers.update');
-            Route::get('/payouts/evacuation-centers/{center}', 'show')->name('payouts.centers.show');
-            Route::get('/payouts/evacuation-centers/{center}/families', 'families')->name('payouts.centers.families');
-            Route::get('/payouts/evacuation-centers/{center}/families/export', 'exportFamilies')->name('payouts.centers.families.export');
-            Route::post('/payouts/evacuation-centers/{center}/bfp-certificate', 'uploadBfpCertificate')->name('payouts.centers.bfp-certificate');
-            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/transfer', 'reassignFamily')->middleware('role:admin|superadmin')->name('payouts.centers.families.transfer');
-            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/transfer', 'reassignPersonAffected')->middleware('role:admin|superadmin')->name('payouts.centers.tciss-families.transfer');
-            Route::get('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/payout-details', 'personAffectedDetails')->name('payouts.centers.tciss-families.details');
-            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/members/{member}/remarks', 'updatePersonAffectedMemberRemarks')->name('payouts.centers.tciss-families.members.remarks');
-            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/housing-condition', 'updatePersonAffectedConditions')->name('payouts.centers.tciss-families.conditions');
-            Route::get('/payouts/evacuation-centers/{center}/families/{family}/payout-details', 'payoutDetails')->name('payouts.centers.families.payout-details');
-            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/members/{member}/remarks', 'updateFamilyMemberRemarks')->name('payouts.centers.families.members.remarks');
-            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/housing-condition', 'updateHousingCondition')->name('payouts.centers.families.housing-condition');
-            Route::get('/payouts/releases/{release}/photo', 'photo')->name('payouts.releases.photo');
-            Route::get('/payouts/evacuation-centers/{center}/available-families', 'availableFamilies')->name('payouts.centers.available-families');
-            Route::post('/payouts/evacuation-centers/{center}/assign-families', 'assign')->name('payouts.centers.assign');
-            Route::post('/payouts/releases/{release}/mark-released', 'release')->name('payouts.releases.release');
+        Route::controller(EvacuationCenterController::class)->group(function () {
+            Route::get('/payouts', 'index')->middleware('permission:view evacuation centers')->name('payouts.index');
+            Route::get('/payouts/evacuation-history', 'history')->middleware('permission:manage evacuation centers')->name('payouts.history');
+            Route::get('/payouts/evacuation-history/export', 'exportHistory')->middleware('permission:manage evacuation centers')->name('payouts.history.export');
+            Route::post('/payouts/evacuation-centers', 'store')->middleware('permission:manage evacuation centers')->name('payouts.centers.store');
+            Route::patch('/payouts/evacuation-centers/{center}/close', 'close')->middleware('permission:manage evacuation centers')->name('payouts.centers.close');
+            Route::put('/payouts/evacuation-centers/{center}', 'update')->middleware('permission:manage evacuation centers')->name('payouts.centers.update');
+            Route::get('/payouts/evacuation-centers/{center}', 'show')->middleware('permission:view evacuation centers')->name('payouts.centers.show');
+            Route::get('/payouts/evacuation-centers/{center}/families', 'families')->middleware('permission:view evacuation centers')->name('payouts.centers.families');
+            Route::get('/payouts/evacuation-centers/{center}/families/export', 'exportFamilies')->middleware('permission:view evacuation centers')->name('payouts.centers.families.export');
+            Route::post('/payouts/evacuation-centers/{center}/bfp-certificate', 'uploadBfpCertificate')->middleware('permission:manage evacuation centers')->name('payouts.centers.bfp-certificate');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/transfer', 'reassignFamily')->middleware('permission:manage evacuation centers')->name('payouts.centers.families.transfer');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/transfer', 'reassignPersonAffected')->middleware('permission:manage evacuation centers')->name('payouts.centers.tciss-families.transfer');
+            Route::get('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/payout-details', 'personAffectedDetails')->middleware('permission:view evacuation centers')->name('payouts.centers.tciss-families.details');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/members/{member}/remarks', 'updatePersonAffectedMemberRemarks')->middleware('permission:manage evacuation centers')->name('payouts.centers.tciss-families.members.remarks');
+            Route::patch('/payouts/evacuation-centers/{center}/tciss-families/{personAffected}/housing-condition', 'updatePersonAffectedConditions')->middleware('permission:manage evacuation centers')->name('payouts.centers.tciss-families.conditions');
+            Route::get('/payouts/evacuation-centers/{center}/families/{family}/payout-details', 'payoutDetails')->middleware('permission:view evacuation centers')->name('payouts.centers.families.payout-details');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/members/{member}/remarks', 'updateFamilyMemberRemarks')->middleware('permission:manage evacuation centers')->name('payouts.centers.families.members.remarks');
+            Route::patch('/payouts/evacuation-centers/{center}/families/{family}/housing-condition', 'updateHousingCondition')->middleware('permission:manage evacuation centers')->name('payouts.centers.families.housing-condition');
+            Route::get('/payouts/releases/{release}/photo', 'photo')->middleware('permission:view evacuation centers')->name('payouts.releases.photo');
+            Route::get('/payouts/evacuation-centers/{center}/available-families', 'availableFamilies')->middleware('permission:manage evacuation centers')->name('payouts.centers.available-families');
+            Route::post('/payouts/evacuation-centers/{center}/assign-families', 'assign')->middleware('permission:manage evacuation centers')->name('payouts.centers.assign');
+            Route::post('/payouts/releases/{release}/mark-released', 'release')->middleware('permission:process payouts')->name('payouts.releases.release');
         });
         Route::match(['post', 'patch'], '/payouts/evacuation-centers/{center}/payout-availability', [EvacuationCenterController::class, 'availability'])
             ->middleware('permission:manage payout availability')->name('payouts.centers.availability');
@@ -114,17 +114,19 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/reports', [DisasterWorkflowController::class, 'reports'])->middleware('permission:view disaster reports')->name('reports.index');
     });
 
-    Route::prefix('superadmin')->name('superadmin.')->group(function () {
-        Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->name('dashboard');
+    foreach (['admin', 'superadmin'] as $role) {
+        Route::prefix($role)->name($role.'.')->middleware("role:{$role}")->group(function () {
+            Route::get('/dashboard', [DisasterWorkflowController::class, 'dashboard'])->name('dashboard');
 
-        Route::prefix('cms')->group(function () {
-            Route::get('/barangays/data', [BarangayController::class, 'data'])->name('barangay.data');
-            Route::resource('barangay', BarangayController::class)->only([
-                'index',
-                'store',
-                'update',
-                'destroy',
-            ]);
+            Route::prefix('cms')->group(function () {
+                Route::get('/barangays/data', [BarangayController::class, 'data'])->name('barangay.data');
+                Route::resource('barangay', BarangayController::class)->only([
+                    'index',
+                    'store',
+                    'update',
+                    'destroy',
+                ]);
+            });
         });
-    });
+    }
 });
