@@ -24,6 +24,7 @@ use App\Models\Integration\PersonAffected;
 use App\Services\Disaster\DafacIntakeIntegrationService;
 use App\Services\Disaster\DisasterAssistanceWorkflowService;
 use App\Support\MemberRemark;
+use App\Support\PersonSex;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -179,7 +180,7 @@ class EvacuationCenterController extends Controller
             'assignments.family.barangay', 'assignments.family.familyMembers',
             'assignments.family.tcissMasterlistRecord', 'assignments.family.dafacRecord',
             'assignments.family.validationRecords',
-            'unlinkedPersonAffecteds.householdMembers', 'unlinkedPersonAffecteds.latestStatus',
+            'unlinkedPersonAffecteds.householdMembers', 'unlinkedPersonAffecteds.familyMembers', 'unlinkedPersonAffecteds.latestStatus',
         ]);
     }
 
@@ -219,6 +220,8 @@ class EvacuationCenterController extends Controller
             });
 
         $externalRows = $center->unlinkedPersonAffecteds->unique('id')->map(function (PersonAffected $family) {
+            $members = $family->householdComposition();
+
             return [
                 'id' => 'person-'.$family->id,
                 'control_number' => $family->control_number,
@@ -226,10 +229,10 @@ class EvacuationCenterController extends Controller
                 'head' => [
                     'name' => $family->full_name, 'relationship' => 'Household Head',
                     'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age,
-                    'sex' => $family->sex, 'occupation' => $family->occupation,
+                    'sex' => PersonSex::normalizeOrPreserve($family->sex), 'occupation' => $family->occupation,
                     'health_condition' => $family->health_condition, 'remarks' => MemberRemark::label($family->code),
                 ],
-                'members' => $family->householdMembers->map(fn (PersonAffected $member) => [
+                'members' => $members->map(fn ($member) => [
                     'name' => $member->full_name, 'relationship' => $member->relationship,
                     'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex,
                     'occupation' => $member->occupation, 'health_condition' => $member->health_condition,
@@ -242,7 +245,7 @@ class EvacuationCenterController extends Controller
                 'validation_status' => 'For Validation',
                 'workflow_status' => $family->latestStatus?->status ?: 'Affected',
                 'assigned_at' => $family->evacuation_center_assigned_at,
-                'household_size' => $family->householdMembers->count() + 1,
+                'household_size' => $members->count() + 1,
             ];
         });
 
@@ -379,9 +382,10 @@ class EvacuationCenterController extends Controller
         $canProcessPayouts = $user->can('process payouts');
         $center->load(['barangay', 'disaster', 'documents' => fn ($q) => $q->where('document_type', 'bfp_certificate')->latest(), 'payoutSessions' => fn ($q) => $q->latest('payout_date')]);
         $assignments = $center->activeAssignments()->with(['family.familyMembers', 'family.validationRecords'])->get();
-        $apiFamilies = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('householdMembers')->get();
+        $apiFamilies = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')
+            ->with(['householdMembers', 'familyMembers'])->get();
         $additionalMembers = $assignments->sum(fn ($assignment) => $assignment->family->familyMembers->count())
-            + $apiFamilies->sum('household_members_count');
+            + $apiFamilies->sum(fn (PersonAffected $family) => $family->householdComposition()->count());
         $assigned = $assignments->count() + $apiFamilies->count();
 
         return view('disaster.evacuation-center-show', [
@@ -452,13 +456,16 @@ class EvacuationCenterController extends Controller
 
             return ['assignment_id' => $assignment->id, 'family_id' => $f->id, 'control_number' => $f->tcissMasterlistRecord?->source_reference ?? $f->dafacRecord?->reference_number, 'dafac_reference' => $f->dafacRecord?->reference_number, 'tciss_reference' => $f->tcissMasterlistRecord?->source_reference, 'household_head' => $f->household_head_full_name, 'address' => $f->complete_address, 'barangay' => $f->barangay?->name, 'barangay_id' => $f->barangay_id, 'family_members' => $f->familyMembers->count(), 'household_size' => $f->familyMembers->count() + 1, 'housing_condition' => $f->housing_condition, 'house_ownership' => $f->house_ownership, 'validation_status' => $validated ? 'Validated' : 'For Validation', 'assigned_at' => $assignment->assigned_at?->toIso8601String(), 'open_url' => route('disaster.payouts.centers.families.payout-details', [$center, $f]), 'transfer_url' => route('disaster.payouts.centers.families.transfer', [$center, $f])];
         });
-        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('householdMembers')
+        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')
+            ->with(['householdMembers', 'familyMembers'])
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = '%'.$request->string('search').'%';
                 $query->where(fn ($query) => $query->where('control_number', 'like', $search)
                     ->orWhere('full_name', 'like', $search)->orWhere('street', 'like', $search)
                     ->orWhere('barangay', 'like', $search)->orWhereHas('householdMembers', fn ($members) => $members
-                    ->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
+                    ->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search))
+                    ->orWhereHas('familyMembers', fn ($members) => $members
+                        ->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
             })
             ->when($request->validation_status === 'Validated', fn ($query) => $query->whereRaw('1 = 0'))
             ->when($request->filled('housing_condition'), fn ($query) => $query->where('housing_condition', $request->housing_condition))
@@ -467,18 +474,22 @@ class EvacuationCenterController extends Controller
             ->when($request->filled('assigned_to'), fn ($query) => $query->whereDate('evacuation_center_assigned_at', '<=', $request->assigned_to));
         $apiTotal = (clone $apiQuery)->count();
         if ($page->currentPage() === 1) {
-            $rows = $rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(fn ($family) => [
-                'assignment_id' => 'tciss-'.$family->id, 'family_id' => null, 'dafac_reference' => null,
-                'control_number' => $family->control_number, 'tciss_reference' => $family->control_number, 'household_head' => $family->full_name,
-                'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '),
-                'barangay' => $family->barangay, 'family_members' => $family->household_members_count,
-                'household_size' => $family->household_members_count + 1, 'housing_condition' => $family->housing_condition,
-                'house_ownership' => $family->housing, 'validation_status' => 'For Validation',
-                'assigned_at' => $family->evacuation_center_assigned_at?->toIso8601String(),
-                'open_url' => route('disaster.payouts.centers.tciss-families.details', [$center, $family]),
-                'transfer_url' => route('disaster.payouts.centers.tciss-families.transfer', [$center, $family]),
-                'external_family' => true,
-            ]));
+            $rows = $rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(function (PersonAffected $family) use ($center) {
+                $memberCount = $family->householdComposition()->count();
+
+                return [
+                    'assignment_id' => 'tciss-'.$family->id, 'family_id' => null, 'dafac_reference' => null,
+                    'control_number' => $family->control_number, 'tciss_reference' => $family->control_number, 'household_head' => $family->full_name,
+                    'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '),
+                    'barangay' => $family->barangay, 'family_members' => $memberCount,
+                    'household_size' => $memberCount + 1, 'housing_condition' => $family->housing_condition,
+                    'house_ownership' => $family->housing, 'validation_status' => 'For Validation',
+                    'assigned_at' => $family->evacuation_center_assigned_at?->toIso8601String(),
+                    'open_url' => route('disaster.payouts.centers.tciss-families.details', [$center, $family]),
+                    'transfer_url' => route('disaster.payouts.centers.tciss-families.transfer', [$center, $family]),
+                    'external_family' => true,
+                ];
+            }));
         }
         $total = $page->total() + $apiTotal;
 
@@ -492,7 +503,8 @@ class EvacuationCenterController extends Controller
             return $this->payoutDetails($center, $personAffected->affectedFamily);
         }
         abort_if($this->isPayoutOnlyUser(), 403, 'This family must be validated by an encoder before Payroll can process its payout.');
-        $personAffected->load('householdMembers');
+        $personAffected->load(['householdMembers', 'familyMembers']);
+        $members = $personAffected->householdComposition();
 
         return response()->json(['success' => true, 'data' => [
             'affected_family' => [
@@ -503,20 +515,22 @@ class EvacuationCenterController extends Controller
                 'occupation' => $personAffected->occupation, 'monthly_income' => $personAffected->monthly_income,
                 'contact_number' => null,
                 'address' => collect([$personAffected->street, $personAffected->barangay, $personAffected->city])->filter()->implode(', '),
-                'barangay' => $personAffected->barangay, 'family_members' => $personAffected->householdMembers->count(),
-                'household_size' => $personAffected->householdMembers->count() + 1,
+                'barangay' => $personAffected->barangay, 'family_members' => $members->count(),
+                'household_size' => $members->count() + 1,
                 'housing_condition' => $personAffected->housing_condition, 'house_ownership' => $personAffected->housing,
                 'health_condition' => $personAffected->health_condition, 'validation_status' => 'For Validation',
                 'workflow_status' => 'For Validation',
             ],
             'dafac' => ['reference' => null], 'tciss' => ['reference' => $personAffected->control_number],
             'evacuation_center' => ['id' => $center->id, 'name' => $center->name],
-            'family_members' => $personAffected->householdMembers->map(fn ($member) => [
+            'family_members' => $members->map(fn ($member) => [
                 'name' => $member->full_name, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age,
                 'relationship' => $member->relationship, 'sex' => $member->sex,
                 'occupation' => $member->occupation, 'health_condition' => $member->health_condition,
                 'remarks_code' => $member->code, 'remarks_label' => MemberRemark::label($member->code),
-                'remarks_url' => route('disaster.payouts.centers.tciss-families.members.remarks', [$center, $personAffected, $member]),
+                'remarks_url' => $member instanceof PersonAffected
+                    ? route('disaster.payouts.centers.tciss-families.members.remarks', [$center, $personAffected, $member])
+                    : null,
             ])->values(),
             'payout' => null, 'defaults' => ['assistance_kind' => null, 'quantity' => 1, 'amount' => null, 'provider' => null, 'payout_date' => null],
             'availability' => ['status' => 'FOR_VALIDATION', 'can_process' => false], 'payout_history' => [],
@@ -553,13 +567,17 @@ class EvacuationCenterController extends Controller
 
             return ['control_number' => $family->tcissMasterlistRecord?->source_reference ?? $family->dafacRecord?->reference_number, 'household_head' => $family->household_head_full_name, 'head' => ['name' => $family->household_head_full_name, 'relationship' => 'Household Head', 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'sex' => null, 'occupation' => $family->occupation, 'health_condition' => $family->health_condition, 'remarks' => null], 'members' => $family->familyMembers->map(fn ($member) => ['name' => $member->name, 'relationship' => $member->relationship_to_head, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex, 'occupation' => $member->occupation, 'health_condition' => $member->health_condition, 'remarks' => $member->remarks_label])->values()->all(), 'address' => $family->complete_address, 'barangay' => $family->barangay?->name, 'family_members' => $family->familyMembers->count(), 'household_size' => $family->familyMembers->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->house_ownership, 'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation', 'assigned_at' => $assignment->assigned_at];
         });
-        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->with('householdMembers')->withCount('householdMembers')
+        $apiQuery = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->with(['householdMembers', 'familyMembers'])
             ->when($request->filled('search'), function ($q) use ($request) {
                 $search = '%'.$request->string('search').'%';
-                $q->where(fn ($q) => $q->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)->orWhere('street', 'like', $search)->orWhere('barangay', 'like', $search)->orWhereHas('householdMembers', fn ($members) => $members->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
+                $q->where(fn ($q) => $q->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)->orWhere('street', 'like', $search)->orWhere('barangay', 'like', $search)->orWhereHas('householdMembers', fn ($members) => $members->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search))->orWhereHas('familyMembers', fn ($members) => $members->where('control_number', 'like', $search)->orWhere('full_name', 'like', $search)));
             })
             ->when($request->validation_status === 'Validated', fn ($q) => $q->whereRaw('1 = 0'))->when($request->filled('housing_condition'), fn ($q) => $q->where('housing_condition', $request->housing_condition))->when($request->filled('house_ownership'), fn ($q) => $q->where('housing', $request->house_ownership))->when($request->filled('assigned_from'), fn ($q) => $q->whereDate('evacuation_center_assigned_at', '>=', $request->assigned_from))->when($request->filled('assigned_to'), fn ($q) => $q->whereDate('evacuation_center_assigned_at', '<=', $request->assigned_to));
-        $rows = $rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(fn ($family) => ['control_number' => $family->control_number, 'household_head' => $family->full_name, 'head' => ['name' => $family->full_name, 'relationship' => 'Household Head', 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'sex' => $family->sex, 'occupation' => $family->occupation, 'health_condition' => $family->health_condition, 'remarks' => MemberRemark::label($family->code)], 'members' => $family->householdMembers->map(fn ($member) => ['name' => $member->full_name, 'relationship' => $member->relationship, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => $member->sex, 'occupation' => $member->occupation, 'health_condition' => $member->health_condition, 'remarks' => MemberRemark::label($member->code)])->values()->all(), 'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '), 'barangay' => $family->barangay, 'family_members' => $family->household_members_count, 'household_size' => $family->household_members_count + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->housing, 'validation_status' => 'For Validation', 'assigned_at' => $family->evacuation_center_assigned_at]));
+        $rows = $rows->concat($apiQuery->latest('evacuation_center_assigned_at')->get()->map(function (PersonAffected $family) {
+            $members = $family->householdComposition();
+
+            return ['control_number' => $family->control_number, 'household_head' => $family->full_name, 'head' => ['name' => $family->full_name, 'relationship' => 'Household Head', 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'sex' => PersonSex::normalizeOrPreserve($family->sex), 'occupation' => $family->occupation, 'health_condition' => $family->health_condition, 'remarks' => MemberRemark::label($family->code)], 'members' => $members->map(fn ($member) => ['name' => $member->full_name, 'relationship' => $member->relationship, 'birthdate' => $member->birthdate?->format('Y-m-d'), 'age' => $member->age, 'sex' => PersonSex::normalizeOrPreserve($member->sex), 'occupation' => $member->occupation, 'health_condition' => $member->health_condition, 'remarks' => MemberRemark::label($member->code)])->values()->all(), 'address' => collect([$family->street, $family->barangay, $family->city])->filter()->implode(', '), 'barangay' => $family->barangay, 'family_members' => $members->count(), 'household_size' => $members->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->housing, 'validation_status' => 'For Validation', 'assigned_at' => $family->evacuation_center_assigned_at];
+        }));
         $filters = collect(['Search' => $request->search, 'Validation' => $request->validation_status, 'Housing condition' => $request->housing_condition, 'Ownership' => $request->house_ownership, 'Assigned from' => $request->assigned_from, 'Assigned to' => $request->assigned_to])->filter(fn ($value) => filled($value))->map(fn ($value, $key) => $key.': '.$value)->implode(' | ');
 
         return Excel::download(new EvacuationCenterFamiliesExport($center->load(['barangay', 'disaster']), $rows, $filters), 'assigned-families-'.Str::slug($center->name).'-'.now()->format('Y-m-d-His').'.xlsx');
@@ -604,10 +622,11 @@ class EvacuationCenterController extends Controller
                         'health_condition' => $data['health_condition'], 'status' => FamilyStatus::VALIDATED,
                         'created_by' => $request->user()->id, 'updated_by' => $request->user()->id]
                 );
-                foreach ($personAffected->householdMembers as $member) {
+                $personAffected->loadMissing(['householdMembers', 'familyMembers']);
+                foreach ($personAffected->householdComposition() as $member) {
                     $family->familyMembers()->updateOrCreate(['name' => $member->full_name], [
                         'age' => $member->age, 'relationship_to_head' => $member->relationship ?: 'Member',
-                        'sex' => in_array($member->sex, ['Male', 'Female'], true) ? $member->sex : null,
+                        'sex' => PersonSex::normalize($member->sex),
                         'remarks_codes' => $member->code,
                     ]);
                 }

@@ -321,19 +321,20 @@ class PersonAffectedApiTest extends TestCase
         $payload = [
             'control_number' => 'CN-0001-00A1', 'status' => 'affected',
             'date_tagged' => '2026-07-22T08:30:00+08:00', 'full_name' => 'Walker, Ella Considine',
-            'birthdate' => '2002-10-25', 'age' => 23, 'sex' => 'Female', 'occupation' => 'Septic Tank Servicer',
+            'birthdate' => '2002-10-25', 'age' => 23, 'sex' => 'FEMALE', 'occupation' => 'Septic Tank Servicer',
             'monthly_income' => 'PHP 58,905 monthly', 'health_condition' => 'Arthritis', 'district' => 'District 2',
             'barangay' => 'South Daang Hari', 'street' => '356 Concepcion Plains', 'city' => 'Taguig',
             'family_head_name' => 'Walker, Ella Considine', 'family_head_control_number' => 'CN-0001-00A1',
             'relationship' => 'Self (Family Head)', 'housing' => 'Sharer',
             'family_members' => [
                 ['control_number' => 'CN-0001-00A1', 'full_name' => 'Walker, Ella Considine', 'relationship' => 'Self (Family Head)', 'age' => 23, 'sex' => 'Female', 'code' => 'Not specified', 'housing' => 'Sharer'],
-                ['control_number' => 'CN-0001-00A2', 'full_name' => 'Walker, Rolando Bernier', 'relationship' => 'Parent', 'age' => 26, 'sex' => 'Male', 'code' => 'Not specified', 'housing' => 'Sharer'],
+                ['control_number' => 'CN-0001-00A2', 'full_name' => 'Walker, Rolando Bernier', 'relationship' => 'Parent', 'age' => 26, 'sex' => 'MALE', 'code' => 'Not specified', 'housing' => 'Sharer'],
             ],
         ];
 
         $this->postAffected($payload)->assertCreated();
-        $this->assertDatabaseHas('person_affecteds', ['control_number' => 'CN-0001-00A1', 'barangay' => 'South Daang Hari']);
+        $this->assertDatabaseHas('person_affecteds', ['control_number' => 'CN-0001-00A1', 'barangay' => 'South Daang Hari', 'sex' => 'Female']);
+        $this->assertDatabaseHas('person_affected_family_members', ['control_number' => 'CN-0001-00A2', 'sex' => 'Male']);
         $this->assertDatabaseCount('person_affected_family_members', 2);
 
         $payload['family_members'] = [array_pop($payload['family_members'])];

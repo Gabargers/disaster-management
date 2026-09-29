@@ -2,14 +2,16 @@
 
 namespace App\Models\Integration;
 
+use App\Models\Auth\User;
+use App\Models\Disaster\AffectedFamily;
+use App\Models\Disaster\EvacuationCenter;
+use App\Support\PersonSex;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\Auth\User;
-use App\Models\Disaster\EvacuationCenter;
-use App\Models\Disaster\AffectedFamily;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class PersonAffected extends Model
 {
@@ -61,6 +63,45 @@ class PersonAffected extends Model
     {
         return $this->hasMany(self::class, 'family_head_control_number', 'control_number')
             ->whereColumn('person_affecteds.control_number', '!=', 'person_affecteds.family_head_control_number');
+    }
+
+    /**
+     * Resolve household members from either supported TCISS payload shape.
+     * Newer integrations send one person per row while older snapshots place
+     * the composition in person_affected_family_members.
+     */
+    public function householdComposition(): Collection
+    {
+        $residents = $this->relationLoaded('householdMembers')
+            ? $this->householdMembers
+            : $this->householdMembers()->get();
+        $snapshots = ($this->relationLoaded('familyMembers')
+            ? $this->familyMembers
+            : $this->familyMembers()->get())
+            ->reject(fn (PersonAffectedFamilyMember $member) => strcasecmp($member->control_number, $this->control_number) === 0)
+            ->values();
+        $snapshotsByControl = $snapshots->keyBy(fn (PersonAffectedFamilyMember $member) => mb_strtoupper(trim($member->control_number)));
+        $snapshotsByName = $snapshots->keyBy(fn (PersonAffectedFamilyMember $member) => mb_strtolower(trim($member->full_name)));
+        $seen = collect();
+
+        $resolved = $residents->map(function (PersonAffected $resident) use ($snapshotsByControl, $snapshotsByName, $seen) {
+            $snapshot = $snapshotsByControl->get(mb_strtoupper(trim($resident->control_number)))
+                ?? $snapshotsByName->get(mb_strtolower(trim((string) $resident->full_name)));
+            $seen->push($snapshot?->id);
+
+            foreach (['relationship', 'age', 'sex', 'code', 'housing'] as $field) {
+                if (blank($resident->{$field}) && filled($snapshot?->{$field})) {
+                    $resident->setAttribute($field, $snapshot->{$field});
+                }
+            }
+            $resident->setAttribute('sex', PersonSex::normalizeOrPreserve($resident->sex));
+
+            return $resident;
+        });
+
+        return $resolved->concat($snapshots->reject(fn (PersonAffectedFamilyMember $member) => $seen->contains($member->id))
+            ->each(fn (PersonAffectedFamilyMember $member) => $member->setAttribute('sex', PersonSex::normalizeOrPreserve($member->sex))))
+            ->values();
     }
 
     public function evacuationCenter(): BelongsTo

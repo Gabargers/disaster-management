@@ -9,6 +9,7 @@ use App\Models\Disaster\EvacuationCenter;
 use App\Models\Integration\PersonAffected;
 use Database\Seeders\Disaster\DisasterRoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PersonAffectedPageTest extends TestCase
@@ -152,6 +153,64 @@ class PersonAffectedPageTest extends TestCase
             'name' => $member->full_name, 'relationship_to_head' => 'Daughter', 'remarks_codes' => 'PWD',
         ]);
         $this->assertDatabaseCount('person_affected_family_members', 0);
+    }
+
+    public function test_snapshot_family_sex_is_visible_and_preserved_during_validation(): void
+    {
+        $this->seed(DisasterRoleSeeder::class);
+        $user = User::factory()->create();
+        $user->assignRole('admin');
+        $user->givePermissionTo('manage payout schedules');
+        $barangay = Barangay::create(['name' => 'Snapshot Barangay', 'code' => 'SNAP-01', 'district' => 'District 1', 'is_active' => true]);
+        $disaster = Disaster::create(['name' => 'Snapshot Incident', 'type' => 'Flood', 'incident_date' => today(), 'is_active' => true]);
+        $center = EvacuationCenter::create([
+            'name' => 'Snapshot Center', 'barangay_id' => $barangay->id, 'disaster_id' => $disaster->id,
+            'address' => 'Snapshot Address', 'capacity' => 100, 'status' => 'ACTIVE',
+            'payout_availability' => 'NOT_AVAILABLE', 'is_active' => true,
+        ]);
+        $head = PersonAffected::create([
+            'control_number' => 'SNAPSHOT-A1', 'full_name' => 'SNAPSHOT HEAD',
+            'family_head_name' => 'SNAPSHOT HEAD', 'family_head_control_number' => 'SNAPSHOT-A1',
+            'relationship' => 'Family Head', 'age' => 40, 'sex' => 'FEMALE', 'housing' => 'Owner',
+            'barangay' => $barangay->name, 'evacuation_center_id' => $center->id,
+            'evacuation_center_assigned_by' => $user->id, 'evacuation_center_assigned_at' => now(),
+        ]);
+        $head->familyMembers()->create([
+            'control_number' => 'SNAPSHOT-A2', 'full_name' => 'SNAPSHOT MEMBER',
+            'relationship' => 'Son', 'age' => 10, 'sex' => 'MALE', 'code' => 'PWD',
+        ]);
+
+        $this->actingAs($user)->getJson(route('disaster.person-affecteds.show', $head))
+            ->assertOk()
+            ->assertJsonPath('data.sex', 'Female')
+            ->assertJsonPath('data.family_members.0.sex', 'Male');
+
+        $this->actingAs($user)->getJson(route('disaster.payouts.centers.families', $center))
+            ->assertOk()
+            ->assertJsonPath('data.0.family_members', 1)
+            ->assertJsonPath('data.0.household_size', 2);
+
+        $this->actingAs($user)->getJson(route('disaster.payouts.centers.tciss-families.details', [$center, $head]))
+            ->assertOk()
+            ->assertJsonPath('data.family_members.0.name', 'SNAPSHOT MEMBER')
+            ->assertJsonPath('data.family_members.0.sex', 'Male');
+
+        $this->actingAs($user)->patchJson(route('disaster.payouts.centers.tciss-families.conditions', [$center, $head]), [
+            'housing_condition' => 'Partially Damaged',
+            'health_condition' => 'N/A',
+        ])->assertOk()->assertJsonPath('data.validation_status', 'Validated');
+
+        $this->assertDatabaseHas('family_members', [
+            'name' => 'SNAPSHOT MEMBER', 'relationship_to_head' => 'Son', 'sex' => 'Male',
+        ]);
+
+        DB::table('family_members')->where('name', 'SNAPSHOT MEMBER')->delete();
+        $migration = require database_path('migrations/disaster/2026_09_29_000006_normalize_and_backfill_person_sex.php');
+        $migration->up();
+
+        $this->assertDatabaseHas('family_members', [
+            'name' => 'SNAPSHOT MEMBER', 'relationship_to_head' => 'Son', 'sex' => 'Male',
+        ]);
     }
 
     public function test_person_can_only_be_assigned_after_an_active_evacuation_center_exists(): void

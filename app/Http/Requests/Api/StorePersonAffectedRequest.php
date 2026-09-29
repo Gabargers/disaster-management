@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Support\PersonSex;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -73,11 +74,18 @@ class StorePersonAffectedRequest extends FormRequest
             }
         }
 
+        if ($this->filled('sex')) {
+            $normalized['sex'] = PersonSex::normalizeOrPreserve($this->input('sex'));
+        }
+
         if (is_array($this->input('family_members'))) {
             $normalized['family_members'] = collect($this->input('family_members'))
                 ->map(function (mixed $member): mixed {
                     if (is_array($member) && isset($member['control_number']) && is_string($member['control_number'])) {
                         $member['control_number'] = $this->normalizeControlNumber($member['control_number']);
+                    }
+                    if (is_array($member) && filled($member['sex'] ?? null)) {
+                        $member['sex'] = PersonSex::normalizeOrPreserve($member['sex']);
                     }
 
                     return $member;

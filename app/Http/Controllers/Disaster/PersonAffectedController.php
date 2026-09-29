@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Disaster\EvacuationCenter;
 use App\Models\Integration\PersonAffected;
 use App\Models\Integration\PersonAffectedStatus;
+use App\Support\PersonSex;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -18,7 +19,7 @@ class PersonAffectedController extends Controller
         $status = trim((string) $request->query('status'));
 
         $families = PersonAffected::query()
-            ->with(['latestStatus', 'evacuationCenter', 'householdMembers'])
+            ->with(['latestStatus', 'evacuationCenter', 'householdMembers', 'familyMembers'])
             ->withCount(['statuses', 'householdMembers'])
             ->familyHeads()
             ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
@@ -30,6 +31,9 @@ class PersonAffectedController extends Controller
                     $query->orWhere($column, 'like', '%'.$search.'%');
                 }
                 $query->orWhereHas('householdMembers', fn ($memberQuery) => $memberQuery
+                    ->where('control_number', 'like', '%'.$search.'%')
+                    ->orWhere('full_name', 'like', '%'.$search.'%'));
+                $query->orWhereHas('familyMembers', fn ($memberQuery) => $memberQuery
                     ->where('control_number', 'like', '%'.$search.'%')
                     ->orWhere('full_name', 'like', '%'.$search.'%'));
             }))
@@ -49,6 +53,10 @@ class PersonAffectedController extends Controller
 
         $totalFamilies = (clone $families)->reorder()->count();
         $people = $families->paginate(15)->withQueryString();
+        $people->getCollection()->each(fn (PersonAffected $person) => $person->setAttribute(
+            'household_members_count',
+            $person->householdComposition()->count()
+        ));
 
         if ($search !== '') {
             $needle = mb_strtolower($search);
@@ -57,7 +65,7 @@ class PersonAffectedController extends Controller
                     || str_contains(mb_strtolower((string) $person->full_name), $needle);
 
                 if (! $headMatches) {
-                    $matchedMember = $person->householdMembers->first(fn ($member) => str_contains(mb_strtolower((string) $member->control_number), $needle)
+                    $matchedMember = $person->householdComposition()->first(fn ($member) => str_contains(mb_strtolower((string) $member->control_number), $needle)
                         || str_contains(mb_strtolower((string) $member->full_name), $needle)
                     );
                     $person->setAttribute('matched_family_member', $matchedMember);
@@ -78,18 +86,19 @@ class PersonAffectedController extends Controller
 
     public function show(PersonAffected $personAffected): JsonResponse
     {
-        $personAffected->load(['latestStatus', 'statuses' => fn ($query) => $query->latest('date_tagged'), 'householdMembers', 'evacuationCenter.barangay', 'evacuationCenterAssigner']);
+        $personAffected->load(['latestStatus', 'statuses' => fn ($query) => $query->latest('date_tagged'), 'householdMembers', 'familyMembers', 'evacuationCenter.barangay', 'evacuationCenterAssigner']);
         $requestedMemberControl = trim((string) request()->query('member_control_number'));
+        $composition = $personAffected->householdComposition();
         $familyMembers = $requestedMemberControl !== ''
-            ? $personAffected->householdMembers->where('control_number', $requestedMemberControl)->values()
-            : $personAffected->householdMembers;
+            ? $composition->where('control_number', $requestedMemberControl)->values()
+            : $composition;
         $centers = EvacuationCenter::query()->createdCenters()->with('barangay')->withCount(['activeAssignments', 'unlinkedPersonAffecteds'])
             ->where('is_active', true)->where('status', 'ACTIVE')->orderBy('name')->get();
 
         return response()->json(['data' => [
             'id' => $personAffected->id, 'control_number' => $personAffected->control_number,
             'full_name' => $personAffected->full_name, 'birthdate' => $personAffected->birthdate?->format('F d, Y'),
-            'age' => $personAffected->age, 'sex' => $personAffected->sex, 'code' => $personAffected->code,
+            'age' => $personAffected->age, 'sex' => PersonSex::normalizeOrPreserve($personAffected->sex), 'code' => $personAffected->code,
             'occupation' => $personAffected->occupation, 'monthly_income' => $personAffected->monthly_income,
             'health_condition' => $personAffected->health_condition, 'district' => $personAffected->district,
             'barangay' => $personAffected->barangay, 'street' => $personAffected->street, 'city' => $personAffected->city,
