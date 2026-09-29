@@ -156,6 +156,7 @@ class EvacuationCenterPayoutTest extends TestCase
             ->assertJsonPath('data.affected_family.house_ownership', $family->house_ownership)
             ->assertJsonPath('data.affected_family.health_condition', $family->health_condition)
             ->assertJsonPath('data.affected_family.housing_condition', $family->housing_condition)
+            ->assertJsonPath('data.payout.can_release', true)
             ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id)
             ->assertJsonPath('data.payout.released_by', $this->staff->name);
 
@@ -268,7 +269,8 @@ class EvacuationCenterPayoutTest extends TestCase
             ->assertViewHas('canProcessPayouts', true)
             ->assertViewHas('canManageHouseholdConditions', false)
             ->assertSee('Awaiting Validation')
-            ->assertSee("payoutOnlyMode?'Payout'", false);
+            ->assertSee("payoutOnlyMode?'Payout'", false)
+            ->assertSee("syncModalActions('payout-tab')", false);
 
         $this->actingAs($this->staff)
             ->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
