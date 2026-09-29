@@ -35,6 +35,29 @@ Example minimal request:
 }
 ```
 
+## Household condition fields
+
+Send these optional fields when TCISS has the corresponding household assessment:
+
+| Field | Allowed values | Notes |
+| --- | --- | --- |
+| `house_ownership` | `Owner`, `Renter`, `Sharer` | Preferred field name. The legacy `housing` field remains supported. |
+| `health_condition` | string, maximum 255 characters | Existing reported text is preserved; administrators categorize it during validation when needed. |
+| `housing_condition` | `Totally Damaged`, `Partially Damaged`, `Water Damage` | Stored and displayed in affected-family and evacuation-center details. |
+
+Example condition payload:
+
+```json
+{
+  "control_number": "CN-10001",
+  "status": "affected",
+  "date_tagged": "2026-08-03T14:35:26+08:00",
+  "house_ownership": "Owner",
+  "health_condition": "With Illness",
+  "housing_condition": "Partially Damaged"
+}
+```
+
 Example cURL request:
 
 ```bash

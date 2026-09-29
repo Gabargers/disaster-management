@@ -94,7 +94,7 @@ class PersonAffectedController extends Controller
             $profile = collect($data)->only([
                 'full_name', 'birthdate', 'age', 'sex', 'code', 'occupation', 'monthly_income',
                 'health_condition', 'district', 'barangay', 'street', 'city', 'family_head_name',
-                'family_head_control_number', 'relationship', 'housing',
+                'family_head_control_number', 'relationship', 'housing', 'housing_condition',
             ])->all();
             if ($profile !== []) {
                 $person->update($profile);

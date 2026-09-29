@@ -50,6 +50,8 @@ class StorePersonAffectedRequest extends FormRequest
             'family_head_control_number' => ['nullable', 'string', 'max:255'],
             'relationship' => ['nullable', 'string', 'max:255'],
             'housing' => ['nullable', 'string', 'max:255'],
+            'house_ownership' => ['nullable', Rule::in(['Owner', 'Renter', 'Sharer'])],
+            'housing_condition' => ['nullable', Rule::in(['Totally Damaged', 'Partially Damaged', 'Water Damage'])],
             'family_members' => ['sometimes', 'array', 'max:100'],
             'family_members.*.control_number' => ['required', 'string', 'max:255', 'distinct'],
             'family_members.*.full_name' => ['required', 'string', 'max:255'],
@@ -82,6 +84,10 @@ class StorePersonAffectedRequest extends FormRequest
                 })->all();
         }
 
+        if ($this->filled('house_ownership')) {
+            $normalized['housing'] = $this->input('house_ownership');
+        }
+
         $this->merge($normalized);
     }
 
@@ -92,7 +98,7 @@ class StorePersonAffectedRequest extends FormRequest
                 'control_number', 'status', 'date_tagged', 'full_name', 'birthdate', 'age', 'sex',
                 'code', 'occupation', 'monthly_income', 'health_condition', 'district', 'barangay',
                 'street', 'city', 'family_head_name', 'family_head_control_number', 'relationship',
-                'housing', 'family_members',
+                'housing', 'house_ownership', 'housing_condition', 'family_members',
             ];
 
             foreach (array_diff(array_keys($this->all()), $allowed) as $field) {

@@ -341,6 +341,27 @@ class PersonAffectedApiTest extends TestCase
         $this->assertDatabaseCount('person_affected_family_members', 2);
     }
 
+    public function test_new_household_condition_fields_are_accepted_and_mapped(): void
+    {
+        $this->postAffected([
+            'control_number' => 'CN-HOUSEHOLD-CONDITIONS',
+            'status' => 'affected',
+            'date_tagged' => '2026-09-20T10:00:00+08:00',
+            'full_name' => 'Household Condition Test',
+            'housing' => 'Owner',
+            'house_ownership' => 'Renter',
+            'health_condition' => 'With Illness',
+            'housing_condition' => 'Partially Damaged',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('person_affecteds', [
+            'control_number' => 'CN-HOUSEHOLD-CONDITIONS',
+            'housing' => 'Renter',
+            'health_condition' => 'With Illness',
+            'housing_condition' => 'Partially Damaged',
+        ]);
+    }
+
     private function postAffected(array $payload, ?string $idempotencyKey = null)
     {
         $idempotencyKey ??= 'test-'.hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));

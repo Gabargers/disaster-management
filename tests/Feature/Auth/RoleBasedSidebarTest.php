@@ -17,7 +17,7 @@ class RoleBasedSidebarTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
-    public function test_encoder_only_sees_encoding_modules(): void
+    public function test_encoder_sees_affected_families_and_evacuation_centers(): void
     {
         $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
 
@@ -27,7 +27,7 @@ class RoleBasedSidebarTest extends TestCase
             ->assertSee('data-sidebar-route="disaster.person-affecteds.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.reports.index"', false)
             ->assertDontSee('data-sidebar-route="disaster.payroll.index"', false)
-            ->assertDontSee('data-sidebar-route="disaster.payouts.index"', false)
+            ->assertSee('data-sidebar-route="disaster.payouts.index"', false)
             ->assertDontSee('data-sidebar-route="accounts.index"', false);
     }
 
@@ -63,10 +63,14 @@ class RoleBasedSidebarTest extends TestCase
         $paymaster = User::where('email', 'paymaster@gmail.com')->firstOrFail();
 
         $this->actingAs($encoder)->get(route('disaster.dafac.index'))->assertForbidden();
-        $this->actingAs($encoder)->get(route('disaster.payouts.index'))->assertForbidden();
+        $this->actingAs($encoder)->get(route('disaster.payouts.index'))->assertOk();
         $this->actingAs($encoder)->get(route('disaster.payroll.index'))->assertForbidden();
+        $this->assertTrue($encoder->can('manage household conditions'));
+        $this->assertFalse($encoder->can('process payouts'));
 
         $this->actingAs($paymaster)->get(route('disaster.payouts.index'))->assertOk();
+        $this->assertFalse($paymaster->can('manage household conditions'));
+        $this->assertTrue($paymaster->can('process payouts'));
         $this->actingAs($paymaster)->get(route('disaster.dafac.index'))->assertForbidden();
         $this->actingAs($paymaster)->get(route('accounts.index'))->assertForbidden();
     }

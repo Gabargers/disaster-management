@@ -95,7 +95,10 @@ class PersonAffectedController extends Controller
             'barangay' => $personAffected->barangay, 'street' => $personAffected->street, 'city' => $personAffected->city,
             'family_head_name' => $personAffected->family_head_name,
             'family_head_control_number' => $personAffected->family_head_control_number,
-            'relationship' => $personAffected->relationship, 'housing' => $personAffected->housing,
+            'relationship' => $personAffected->relationship,
+            'house_ownership' => $personAffected->housing,
+            'housing' => $personAffected->housing,
+            'housing_condition' => $personAffected->housing_condition,
             'latest_status' => $personAffected->latestStatus?->status,
             'date_tagged' => $personAffected->latestStatus?->date_tagged?->toIso8601String(),
             // Reserved for the TCISS read-only image integration. Once TCISS provides its

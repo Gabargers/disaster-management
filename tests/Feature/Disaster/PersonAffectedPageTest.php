@@ -25,7 +25,8 @@ class PersonAffectedPageTest extends TestCase
             'occupation' => 'Carpenter', 'monthly_income' => 'PHP 15,000 monthly', 'health_condition' => 'Asthma',
             'district' => 'District 1', 'barangay' => 'Central Signal', 'street' => 'Rizal Street',
             'city' => 'Taguig City', 'family_head_name' => 'Maria Dela Cruz',
-            'family_head_control_number' => 'TCISS-CN-10001', 'relationship' => 'Family Head', 'housing' => 'Owner',
+            'family_head_control_number' => 'TCISS-CN-10001', 'relationship' => 'Family Head',
+            'housing' => 'Owner', 'housing_condition' => 'Partially Damaged',
         ]);
         $person->statuses()->create(['status' => 'affected', 'date_tagged' => '2026-07-22 08:30:00.000000']);
 
@@ -48,6 +49,8 @@ class PersonAffectedPageTest extends TestCase
             ->assertJsonPath('data.family_head_name', 'Maria Dela Cruz')
             ->assertJsonPath('data.family_head_control_number', 'TCISS-CN-10001')
             ->assertJsonPath('data.relationship', 'Family Head')
+            ->assertJsonPath('data.house_ownership', 'Owner')
+            ->assertJsonPath('data.housing_condition', 'Partially Damaged')
             ->assertJsonPath('data.housing', 'Owner');
     }
 
@@ -233,5 +236,50 @@ class PersonAffectedPageTest extends TestCase
         $this->assertSame(1, $dashboard->viewData('metrics')['FAMILY_AFFECTED']);
         $this->assertSame(1, $dashboard->viewData('metrics')['PERSON_AFFECTED']);
         $this->assertSame(1, $dashboard->viewData('metrics')['ACTIVE_EVACUATION_CENTERS']);
+    }
+
+    public function test_encoder_can_assign_an_affected_family_without_tciss_management_access(): void
+    {
+        $this->seed(DisasterRoleSeeder::class);
+        $coordinator = User::where('email', 'encoder@gmail.com')->firstOrFail();
+        $barangay = Barangay::create([
+            'name' => 'Coordinator Barangay', 'code' => 'COORD-01',
+            'district' => 'District 1', 'is_active' => true,
+        ]);
+        $disaster = Disaster::create([
+            'name' => 'Coordinator Assignment Incident', 'type' => 'Flood',
+            'incident_date' => today(), 'is_active' => true,
+        ]);
+        $center = EvacuationCenter::create([
+            'name' => 'Coordinator Assignment Center', 'barangay_id' => $barangay->id,
+            'disaster_id' => $disaster->id, 'address' => 'Coordinator Barangay',
+            'capacity' => 50, 'status' => 'ACTIVE',
+            'payout_availability' => 'NOT_AVAILABLE', 'is_active' => true,
+        ]);
+        $family = PersonAffected::create([
+            'control_number' => 'COORD-FAMILY-001',
+            'full_name' => 'Coordinator Assignment Family',
+        ]);
+
+        $this->assertTrue($coordinator->can('evacuation_center.assign_family'));
+        $this->assertFalse($coordinator->can('manage tciss masterlist'));
+
+        $this->actingAs($coordinator)
+            ->getJson(route('disaster.person-affecteds.show', $family))
+            ->assertOk()
+            ->assertJsonPath('data.evacuation_center_assignment.can_assign', true);
+
+        $this->actingAs($coordinator)
+            ->postJson(route('disaster.person-affecteds.assign-evacuation-center', $family), [
+                'evacuation_center_id' => $center->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.center.id', $center->id);
+
+        $this->assertDatabaseHas('person_affecteds', [
+            'id' => $family->id,
+            'evacuation_center_id' => $center->id,
+            'evacuation_center_assigned_by' => $coordinator->id,
+        ]);
     }
 }

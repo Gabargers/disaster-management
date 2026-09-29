@@ -70,7 +70,7 @@ document.getElementById('residentModal').addEventListener('show.bs.modal', async
         }
         grid('personal-info', [['Birthday', data.birthdate], ['Age', data.age], ['Sex', data.sex], ['Code', data.code], ['Occupation', data.occupation, true], ['Monthly Income', data.monthly_income, true], ['Health Condition', data.health_condition, true]]);
         grid('address-info', [['District', data.district], ['Barangay', data.barangay], ['Street', data.street, true], ['City', data.city, true]]);
-        grid('family-info', [['Family Head', data.family_head_name, true], ['Family Head CN', data.family_head_control_number, true], ['Relationship', data.relationship], ['Housing', data.housing]]);
+        grid('family-info', [['Family Head', data.family_head_name, true], ['Family Head CN', data.family_head_control_number, true], ['Relationship', data.relationship], ['House Ownership', data.house_ownership], ['Housing Condition', data.housing_condition, true]]);
         const assignment = data.evacuation_center_assignment;
         const centerSelect = element('person-center-select');
         const assignButton = element('assign-center-button');

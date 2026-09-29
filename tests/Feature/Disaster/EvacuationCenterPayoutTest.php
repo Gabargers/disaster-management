@@ -7,9 +7,11 @@ use App\Models\Disaster\CswdoEvacuationCenter;
 use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\PayoutRelease;
 use App\Models\Disaster\PostPayoutRequirement;
+use App\Models\Integration\PersonAffected;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -151,8 +153,14 @@ class EvacuationCenterPayoutTest extends TestCase
         $family = $center->activeAssignments()->with('family.familyMembers')->firstOrFail()->family;
         $this->actingAs($this->staff)->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
             ->assertOk()->assertJsonPath('data.affected_family.id', $family->id)
+            ->assertJsonPath('data.affected_family.house_ownership', $family->house_ownership)
+            ->assertJsonPath('data.affected_family.health_condition', $family->health_condition)
+            ->assertJsonPath('data.affected_family.housing_condition', $family->housing_condition)
             ->assertJsonCount(3, 'data.family_members')->assertJsonPath('data.evacuation_center.id', $center->id)
             ->assertJsonPath('data.payout.released_by', $this->staff->name);
+
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()->assertSee('House Ownership')->assertSee('Health Condition')->assertSee('Housing Condition');
     }
 
     public function test_family_member_remarks_can_be_updated_from_the_center_details(): void
@@ -169,9 +177,9 @@ class EvacuationCenterPayoutTest extends TestCase
         $this->assertDatabaseHas('family_members', ['id' => $member->id, 'remarks_codes' => 'PWD']);
     }
 
-    public function test_health_condition_accepts_na_and_validated_family_cannot_be_validated_again(): void
+    public function test_encoder_can_validate_household_conditions_and_the_form_locks_after_validation(): void
     {
-        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
+        $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
         $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
         $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
         $family->validationRecords()->delete();
@@ -182,20 +190,90 @@ class EvacuationCenterPayoutTest extends TestCase
             'housing_condition' => 'Partially Damaged',
         ];
 
-        $this->actingAs($admin)
+        $this->actingAs($encoder)
             ->patchJson(route('disaster.payouts.centers.families.housing-condition', [$center, $family]), $payload)
             ->assertOk()
             ->assertJsonPath('data.health_condition', 'N/A')
             ->assertJsonPath('data.validation_status', 'Validated');
 
         $this->assertDatabaseHas('affected_families', ['id' => $family->id, 'health_condition' => 'N/A']);
-        $this->actingAs($admin)
+        $this->actingAs($encoder)
             ->patchJson(route('disaster.payouts.centers.families.housing-condition', [$center, $family]), $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors('validation');
 
-        $this->actingAs($admin)->get(route('disaster.payouts.centers.show', $center))
-            ->assertOk()->assertSee('<option value="N/A">N/A</option>', false)->assertSee("validated?'Validated'", false);
+        $this->actingAs($this->staff)
+            ->patchJson(route('disaster.payouts.centers.families.housing-condition', [$center, $family]), $payload)
+            ->assertForbidden();
+
+        $this->actingAs($encoder)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()
+            ->assertViewHas('canProcessPayouts', false)
+            ->assertViewHas('canManageHouseholdConditions', true)
+            ->assertSee('<option value="N/A">N/A</option>', false)
+            ->assertSee('button.disabled=!canManageHouseholdConditions||validated', false);
+
+        $this->actingAs($encoder)
+            ->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
+            ->assertOk()
+            ->assertJsonPath('data.affected_family.validation_status', 'Validated')
+            ->assertJsonPath('data.payout', null)
+            ->assertJsonCount(0, 'data.payout_history');
+    }
+
+    public function test_encoder_can_complete_conditions_for_an_unlinked_tciss_family(): void
+    {
+        $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $family = PersonAffected::create([
+            'control_number' => 'PAYROLL-CONDITION-001',
+            'full_name' => 'Payroll Condition Family',
+            'family_head_control_number' => 'PAYROLL-CONDITION-001',
+            'relationship' => 'Family Head',
+            'housing' => 'Owner',
+            'barangay' => $center->barangay?->name,
+            'evacuation_center_id' => $center->id,
+            'evacuation_center_assigned_by' => $encoder->id,
+            'evacuation_center_assigned_at' => now(),
+        ]);
+
+        $this->actingAs($encoder)
+            ->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()
+            ->assertViewHas('canManageHouseholdConditions', true);
+
+        $this->actingAs($encoder)
+            ->patchJson(route('disaster.payouts.centers.tciss-families.conditions', [$center, $family]), [
+                'health_condition' => 'N/A',
+                'housing_condition' => 'Partially Damaged',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.house_ownership', 'Owner')
+            ->assertJsonPath('data.health_condition', 'N/A')
+            ->assertJsonPath('data.housing_condition', 'Partially Damaged')
+            ->assertJsonPath('data.validation_status', 'Validated');
+
+        $this->assertNotNull($family->refresh()->affected_family_id);
+    }
+
+    public function test_payroll_has_payout_only_access_and_must_wait_for_encoder_validation(): void
+    {
+        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
+        $family = $center->activeAssignments()->with('family')->firstOrFail()->family;
+        $family->validationRecords()->delete();
+
+        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
+            ->assertOk()
+            ->assertViewHas('payoutOnlyMode', true)
+            ->assertViewHas('canProcessPayouts', true)
+            ->assertViewHas('canManageHouseholdConditions', false)
+            ->assertSee('Awaiting Validation')
+            ->assertSee("payoutOnlyMode?'Payout'", false);
+
+        $this->actingAs($this->staff)
+            ->getJson(route('disaster.payouts.centers.families.payout-details', [$center, $family]))
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This family must be validated by an encoder before Payroll can process its payout.');
     }
 
     public function test_assigned_families_can_be_exported_using_the_current_filters(): void
@@ -360,36 +438,23 @@ class EvacuationCenterPayoutTest extends TestCase
         $this->actingAs($user)->postJson(route('disaster.payouts.releases.release', $release), $this->releaseData())->assertForbidden();
     }
 
-    public function test_paymaster_and_admin_can_manage_payout_availability(): void
-    {
-        $center = EvacuationCenter::where('name', 'Central Signal Covered Court')->firstOrFail();
-        $center->update(['payout_availability' => 'NOT_AVAILABLE']);
-
-        $this->actingAs($this->staff)->postJson(route('disaster.payouts.centers.availability', $center), [
-            'payout_availability' => 'NOT_AVAILABLE',
-        ])->assertOk();
-
-        $admin = User::where('email', 'admin@gmail.com')->firstOrFail();
-        $this->actingAs($admin)->postJson(route('disaster.payouts.centers.availability', $center), [
-            'payout_availability' => 'NOT_AVAILABLE',
-        ])->assertOk();
-
-        $superadmin = User::where('email', 'superadmin@gmail.com')->firstOrFail();
-        $this->actingAs($superadmin)->postJson(route('disaster.payouts.centers.availability', $center), [
-            'payout_availability' => 'NOT_AVAILABLE',
-        ])->assertOk();
-    }
-
-    public function test_availability_button_is_visible_only_to_authorized_roles(): void
+    public function test_payout_availability_action_is_removed_for_every_role(): void
     {
         $center = EvacuationCenter::where('name', 'Bagumbayan Multi-Purpose Hall')->firstOrFail();
-        $this->actingAs($this->staff)->get(route('disaster.payouts.centers.show', $center))
-            ->assertOk()->assertSee('Make Payout Available');
-        foreach (['admin@gmail.com', 'superadmin@gmail.com'] as $email) {
+        foreach (['paymaster@gmail.com', 'admin@gmail.com', 'superadmin@gmail.com'] as $email) {
             $this->actingAs(User::where('email', $email)->firstOrFail())
                 ->get(route('disaster.payouts.centers.show', $center))
-                ->assertOk()->assertSee('Make Payout Available');
+                ->assertOk()
+                ->assertDontSee('Make Payout Available')
+                ->assertDontSee('Disable Payout');
         }
+
+        $this->assertFalse(Route::has('disaster.payouts.centers.availability'));
+        $encoder = User::where('email', 'encoder@gmail.com')->firstOrFail();
+        $this->assertTrue($encoder->can('manage household conditions'));
+        $this->assertTrue($encoder->can('view evacuation centers'));
+        $this->assertFalse($this->staff->can('manage household conditions'));
+        $this->assertFalse($this->staff->can('manage payout availability'));
     }
 
     public function test_bfp_certificate_is_uploaded_per_evacuation_center(): void

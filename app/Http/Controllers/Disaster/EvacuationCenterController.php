@@ -15,7 +15,6 @@ use App\Models\Disaster\DafacRecord;
 use App\Models\Disaster\Disaster;
 use App\Models\Disaster\EvacuationCenter;
 use App\Models\Disaster\EvacuationCenterAssignment;
-use App\Models\Disaster\EvacuationCenterPayoutSession;
 use App\Models\Disaster\FamilyMember;
 use App\Models\Disaster\PayoutRelease;
 use App\Models\Disaster\PayoutSchedule;
@@ -41,7 +40,7 @@ class EvacuationCenterController extends Controller
     public function centersForBarangay(Request $request, Barangay $barangay): JsonResponse
     {
         $query = $barangay->evacuationCenters()->createdCenters()->orderBy('name');
-        if (! $request->boolean('include_inactive') || ! $request->user()->can('manage payout availability')) {
+        if (! $request->boolean('include_inactive') || ! $request->user()->can('manage evacuation centers')) {
             $query->where('is_active', true)->where('status', 'ACTIVE');
         }
         if ($request->filled('disaster_id')) {
@@ -375,6 +374,9 @@ class EvacuationCenterController extends Controller
 
     public function show(EvacuationCenter $center)
     {
+        $user = request()->user();
+        $canManageHouseholdConditions = $user->can('manage household conditions');
+        $canProcessPayouts = $user->can('process payouts');
         $center->load(['barangay', 'disaster', 'documents' => fn ($q) => $q->where('document_type', 'bfp_certificate')->latest(), 'payoutSessions' => fn ($q) => $q->latest('payout_date')]);
         $assignments = $center->activeAssignments()->with(['family.familyMembers', 'family.validationRecords'])->get();
         $apiFamilies = $center->personAffecteds()->familyHeads()->whereNull('affected_family_id')->withCount('householdMembers')->get();
@@ -388,12 +390,13 @@ class EvacuationCenterController extends Controller
             'center' => $center, 'session' => $center->payoutSessions->first(),
             'summary' => ['families' => $assigned, 'evacuees' => $assigned + $additionalMembers, 'available' => max(0, (int) $center->capacity - ($assigned + $additionalMembers)), 'validated' => $assignments->filter(fn ($assignment) => $assignment->family->validationRecords->contains('status', 'Validated'))->count()],
             'disasters' => Disaster::orderByDesc('incident_date')->get(['id', 'name']),
-            'officers' => User::permission('process payouts')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'transferCenterOptions' => EvacuationCenter::where('disaster_id', $center->disaster_id)->whereKeyNot($center->id)->where('is_active', true)->where('status', 'ACTIVE')->with('barangay')->orderBy('name')->get()->map(fn ($item) => ['id' => $item->id, 'name' => $item->name, 'barangay' => $item->barangay?->name, 'barangay_id' => $item->barangay_id])->values(),
-            'canTransferFamilies' => $center->status !== 'CLOSED' && request()->user()->can('manage evacuation centers'),
-            'canCloseCenter' => request()->user()->can('manage evacuation centers'),
-            'canManageCenters' => request()->user()->can('manage evacuation centers'),
-            'canManageAvailability' => request()->user()->can('manage payout availability'),
+            'canTransferFamilies' => $center->status !== 'CLOSED' && $user->can('manage evacuation centers'),
+            'canCloseCenter' => $user->can('manage evacuation centers'),
+            'canManageCenters' => $user->can('manage evacuation centers'),
+            'canManageHouseholdConditions' => $canManageHouseholdConditions,
+            'canProcessPayouts' => $canProcessPayouts,
+            'payoutOnlyMode' => $canProcessPayouts && ! $canManageHouseholdConditions && ! $user->can('manage evacuation centers'),
             'bfpCertificate' => $center->documents->first(),
         ]);
     }
@@ -488,6 +491,7 @@ class EvacuationCenterController extends Controller
         if ($personAffected->affectedFamily) {
             return $this->payoutDetails($center, $personAffected->affectedFamily);
         }
+        abort_if($this->isPayoutOnlyUser(), 403, 'This family must be validated by an encoder before Payroll can process its payout.');
         $personAffected->load('householdMembers');
 
         return response()->json(['success' => true, 'data' => [
@@ -641,9 +645,11 @@ class EvacuationCenterController extends Controller
         abort_unless($center->activeAssignments()->where('affected_family_id', $family->id)->exists(), 404, 'This family is not currently assigned to the evacuation center.');
         $family->load(['barangay', 'dafacRecord', 'tcissMasterlistRecord', 'familyMembers', 'validationRecords', 'payoutReleases' => fn ($q) => $q->where('evacuation_center_id', $center->id)->latest(), 'payoutReleases.releaser']);
         $validated = $family->validationRecords->contains('status', 'Validated');
+        abort_if($this->isPayoutOnlyUser() && ! $validated, 403, 'This family must be validated by an encoder before Payroll can process its payout.');
+        $canViewPayout = request()->user()->can('process payouts') || request()->user()->can('manage evacuation centers');
         $session = $center->payoutSessions()->latest('payout_date')->first();
         $payout = $family->payoutReleases->first();
-        if ($validated && ! $payout) {
+        if ($validated && $canViewPayout && ! $payout) {
             $schedule = PayoutSchedule::firstOrCreate(['disaster_id' => $family->disaster_id, 'title' => $center->name.' Validated Household Payout'], ['scheduled_date' => today(), 'venue' => $center->name, 'notes' => 'Automatically prepared after DAFAC household validation.', 'created_by' => request()->user()->id]);
             $payout = PayoutRelease::firstOrCreate(['payout_schedule_id' => $schedule->id, 'affected_family_id' => $family->id], ['evacuation_center_id' => $center->id, 'status' => 'Scheduled', 'quantity' => 1]);
             if (! in_array($family->status, [FamilyStatus::PAYOUT_SCHEDULED, FamilyStatus::ASSISTANCE_RELEASED, FamilyStatus::REQUIREMENTS_PENDING, FamilyStatus::REQUIREMENTS_COMPLETED], true)) {
@@ -655,11 +661,20 @@ class EvacuationCenterController extends Controller
             'affected_family' => ['id' => $family->id, 'surname' => $family->household_head_surname, 'given_name' => $family->household_head_given_name, 'middle_name' => $family->household_head_middle_name, 'household_head' => $family->household_head_full_name, 'birthdate' => $family->birthdate?->format('Y-m-d'), 'age' => $family->age, 'occupation' => $family->occupation, 'monthly_income' => $family->monthly_income, 'contact_number' => $family->contact_number, 'address' => $family->complete_address, 'barangay' => $family->barangay?->name, 'family_members' => $family->familyMembers->count(), 'household_size' => $family->familyMembers->count() + 1, 'housing_condition' => $family->housing_condition, 'house_ownership' => $family->house_ownership, 'health_condition' => $family->health_condition, 'validation_status' => $family->validationRecords->contains('status', 'Validated') ? 'Validated' : 'For Validation', 'workflow_status' => $family->status?->value ?? $family->status],
             'dafac' => ['reference' => $family->dafacRecord?->reference_number], 'tciss' => ['reference' => $family->tcissMasterlistRecord?->source_reference], 'evacuation_center' => ['id' => $center->id, 'name' => $center->name],
             'family_members' => $family->familyMembers->map(fn ($m) => ['name' => $m->name, 'birthdate' => $m->birthdate?->format('Y-m-d'), 'age' => $m->age, 'relationship' => $m->relationship_to_head, 'sex' => $m->sex, 'occupation' => $m->occupation, 'health_condition' => $m->health_condition, 'remarks_code' => $m->remarks_codes, 'remarks_label' => $m->remarks_label, 'remarks_url' => route('disaster.payouts.centers.families.members.remarks', [$center, $family, $m])]),
-            'payout' => $payout ? ['id' => $payout->id, 'status' => $payout->status, 'assistance_kind' => $payout->assistance_kind, 'quantity' => $payout->quantity, 'amount' => $payout->amount, 'provider' => $payout->provider, 'notes' => $payout->photo_caption, 'payout_date' => $session?->payout_date?->format('Y-m-d') ?? today()->format('Y-m-d'), 'released_at' => $payout->released_at?->toIso8601String(), 'released_by' => $payout->releaser?->name ?? request()->user()->name, 'has_photo' => (bool) $payout->payout_photo_path, 'photo_url' => $payout->payout_photo_path ? route('disaster.payouts.releases.photo', $payout) : null, 'can_release' => $validated && $payout->status === 'Scheduled' && request()->user()->can('process payouts')] : null,
-            'defaults' => ['assistance_kind' => $session?->assistance_type, 'quantity' => $session?->default_quantity, 'amount' => $session?->default_amount, 'provider' => $session?->provider, 'payout_date' => $session?->payout_date?->format('Y-m-d')],
+            'payout' => $canViewPayout && $payout ? ['id' => $payout->id, 'status' => $payout->status, 'assistance_kind' => $payout->assistance_kind, 'quantity' => $payout->quantity, 'amount' => $payout->amount, 'provider' => $payout->provider, 'notes' => $payout->photo_caption, 'payout_date' => $session?->payout_date?->format('Y-m-d') ?? today()->format('Y-m-d'), 'released_at' => $payout->released_at?->toIso8601String(), 'released_by' => $payout->releaser?->name ?? request()->user()->name, 'has_photo' => (bool) $payout->payout_photo_path, 'photo_url' => $payout->payout_photo_path ? route('disaster.payouts.releases.photo', $payout) : null, 'can_release' => $validated && $payout->status === 'Scheduled' && request()->user()->can('process payouts')] : null,
+            'defaults' => $canViewPayout ? ['assistance_kind' => $session?->assistance_type, 'quantity' => $session?->default_quantity, 'amount' => $session?->default_amount, 'provider' => $session?->provider, 'payout_date' => $session?->payout_date?->format('Y-m-d')] : ['assistance_kind' => null, 'quantity' => 1, 'amount' => null, 'provider' => null, 'payout_date' => null],
             'availability' => ['status' => $validated ? 'VALIDATED' : 'FOR_VALIDATION', 'can_process' => $validated && request()->user()->can('process payouts')],
-            'payout_history' => $family->payoutReleases->map(fn ($p) => ['status' => $p->status, 'assistance_kind' => $p->assistance_kind, 'amount' => $p->amount, 'provider' => $p->provider, 'released_at' => $p->released_at?->toIso8601String(), 'released_by' => $p->releaser?->name]),
+            'payout_history' => $canViewPayout ? $family->payoutReleases->map(fn ($p) => ['status' => $p->status, 'assistance_kind' => $p->assistance_kind, 'amount' => $p->amount, 'provider' => $p->provider, 'released_at' => $p->released_at?->toIso8601String(), 'released_by' => $p->releaser?->name]) : [],
         ]]);
+    }
+
+    private function isPayoutOnlyUser(): bool
+    {
+        $user = request()->user();
+
+        return $user->can('process payouts')
+            && ! $user->can('manage household conditions')
+            && ! $user->can('manage evacuation centers');
     }
 
     public function updateHousingCondition(Request $request, EvacuationCenter $center, AffectedFamily $family): JsonResponse
@@ -760,38 +775,6 @@ class EvacuationCenterController extends Controller
             }
 
             return response()->json(['success' => true, 'message' => 'Families assigned successfully.']);
-        });
-    }
-
-    public function availability(Request $request, EvacuationCenter $center): JsonResponse
-    {
-        $data = $request->validate(['payout_availability' => ['required', Rule::in(['AVAILABLE', 'NOT_AVAILABLE', 'COMPLETED'])], 'payout_date' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date'], 'start_time' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date_format:H:i'], 'end_time' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'date_format:H:i', 'after:start_time'], 'payout_area' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'assigned_officer_id' => ['nullable', 'exists:users,id'], 'assistance_type' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'default_quantity' => ['nullable', 'numeric', 'min:0'], 'default_amount' => ['nullable', 'numeric', 'min:0'], 'provider' => ['required_if:payout_availability,AVAILABLE', 'nullable', 'string', 'max:255'], 'notes' => ['nullable', 'string', 'max:2000']]);
-        if ($data['payout_availability'] === 'AVAILABLE' && $center->status !== 'ACTIVE') {
-            throw ValidationException::withMessages(['payout_availability' => 'Only an active evacuation center can be made available for payout.']);
-        }
-
-        return DB::transaction(function () use ($data, $request, $center) {
-            $center = EvacuationCenter::lockForUpdate()->findOrFail($center->id);
-            $old = $center->payout_availability;
-            $session = null;
-            if ($data['payout_availability'] === 'AVAILABLE') {
-                if (EvacuationCenterPayoutSession::where('evacuation_center_id', $center->id)->whereDate('payout_date', $data['payout_date'])->where('status', 'OPEN')->exists()) {
-                    throw ValidationException::withMessages(['payout_date' => 'An active payout session already exists for this center and date.']);
-                }$session = EvacuationCenterPayoutSession::create($data + ['evacuation_center_id' => $center->id, 'disaster_id' => $center->disaster_id, 'status' => 'OPEN', 'created_by' => $request->user()->id]);
-                $legacy = PayoutSchedule::create(['disaster_id' => $center->disaster_id, 'title' => $center->name.' Payout', 'scheduled_date' => $data['payout_date'], 'venue' => $data['payout_area'], 'notes' => $data['notes'] ?? null, 'created_by' => $request->user()->id]);
-                foreach ($center->activeAssignments()->with('family')->get() as $assignment) {
-                    $family = $assignment->family;
-                    if ($family->status !== FamilyStatus::PAYOUT_PENDING) {
-                        continue;
-                    }PayoutRelease::firstOrCreate(['payout_session_id' => $session->id, 'affected_family_id' => $family->id], ['payout_schedule_id' => $legacy->id, 'evacuation_center_id' => $center->id, 'status' => 'Scheduled', 'assistance_kind' => $data['assistance_type'], 'quantity' => $data['default_quantity'] ?? null, 'amount' => $data['default_amount'] ?? null, 'provider' => $data['provider']]);
-                    $this->workflow->transition($family, FamilyStatus::PAYOUT_SCHEDULED, $request->user(), 'payout_scheduled', null, ['payout_session_id' => $session->id]);
-                }
-            } else {
-                $center->payoutSessions()->where('status', 'OPEN')->update(['status' => $data['payout_availability'] === 'COMPLETED' ? 'COMPLETED' : 'CLOSED']);
-            }$center->update(['payout_availability' => $data['payout_availability'], 'default_payout_date' => $data['payout_date'] ?? null, 'default_payout_start_time' => $data['start_time'] ?? null, 'default_payout_end_time' => $data['end_time'] ?? null, 'updated_by' => $request->user()->id]);
-            AuditLog::create(['user_id' => $request->user()->id, 'auditable_type' => $center::class, 'auditable_id' => $center->id, 'action' => 'payout_availability_changed', 'old_values' => ['payout_availability' => $old], 'new_values' => ['payout_availability' => $center->payout_availability, 'payout_session_id' => $session?->id], 'ip_address' => $request->ip(), 'user_agent' => $request->userAgent()]);
-
-            return response()->json(['success' => true, 'message' => $center->payout_availability === 'AVAILABLE' ? 'Payout is now available.' : 'Payout availability disabled.', 'data' => ['availability' => $center->payout_availability, 'session' => $session]]);
         });
     }
 
