@@ -21,7 +21,7 @@
             <div class="table-responsive">
                 <table id="accounts-table" class="table align-middle table-row-dashed fs-6 gy-5" style="width:100%">
                     <thead><tr class="text-gray-700 fw-bold fs-7 text-uppercase">
-                        <th>Name</th><th>Email</th><th>Contact</th><th>Role</th><th>Status</th><th>Date Created</th><th>Actions</th>
+                        <th>ID Number</th><th>Email</th><th>Role</th><th>Status</th><th>Date Created</th><th>Actions</th>
                     </tr></thead>
                 </table>
             </div>
@@ -48,7 +48,7 @@
                         <div class="col-md-4"><label class="form-label">Middle Name</label><input class="form-control form-control-solid" name="middle_name" value="{{ old('middle_name') }}" maxlength="100"></div>
                         <div class="col-md-4"><label class="form-label required">Last Name</label><input class="form-control form-control-solid" name="last_name" value="{{ old('last_name') }}" required maxlength="100"></div>
                         <div class="col-md-6"><label class="form-label required">Email Address</label><input type="email" class="form-control form-control-solid" name="email" value="{{ old('email') }}" required></div>
-                        <div class="col-md-6"><label class="form-label required">Contact Number</label><input class="form-control form-control-solid" name="contact_number" value="{{ old('contact_number') }}" placeholder="09171234567" required></div>
+                        <div class="col-md-6"><label class="form-label required">ID Number</label><input class="form-control form-control-solid text-uppercase" name="id_number" value="{{ old('id_number') }}" placeholder="e.g. EMP-0001" required maxlength="50" autocomplete="off"></div>
                         <div class="col-md-8">
                             <label class="form-label required">Role</label>
                             <select class="form-select form-select-solid" name="roles[]" id="accountRoles" required
@@ -91,7 +91,7 @@
                         <div class="col-md-4"><label class="form-label">Middle Name</label><input class="form-control form-control-solid" id="editMiddleName" name="middle_name" maxlength="100"></div>
                         <div class="col-md-4"><label class="form-label required">Last Name</label><input class="form-control form-control-solid" id="editLastName" name="last_name" required maxlength="100"></div>
                         <div class="col-md-6"><label class="form-label required">Email Address</label><input type="email" class="form-control form-control-solid" id="editEmail" name="email" required></div>
-                        <div class="col-md-6"><label class="form-label required">Contact Number</label><input class="form-control form-control-solid" id="editContactNumber" name="contact_number" placeholder="09171234567" required></div>
+                        <div class="col-md-6"><label class="form-label required">ID Number</label><input class="form-control form-control-solid text-uppercase" id="editIdNumber" name="id_number" placeholder="e.g. EMP-0001" required maxlength="50" autocomplete="off"></div>
                         <div class="col-md-8">
                             <label class="form-label required">Role</label>
                             <select class="form-select form-select-solid" id="editRoles" name="roles[]" required data-control="select2" data-placeholder="Select a role" data-dropdown-parent="#editAccountModal">
@@ -122,7 +122,7 @@
         'middle_name' => old('middle_name'),
         'last_name' => old('last_name'),
         'email' => old('email'),
-        'contact_number' => old('contact_number'),
+        'id_number' => old('id_number'),
         'is_active' => old('is_active'),
         'roles' => old('roles', []),
     ];
@@ -132,10 +132,10 @@ $(function () {
     $('#accounts-table').DataTable({
         processing: true, serverSide: true, responsive: true,
         ajax: @json(route('accounts.data')),
-        order: [[5, 'desc']], pageLength: 10, searchDelay: 350,
+        order: [[4, 'desc']], pageLength: 10, searchDelay: 350,
         columns: [
-            {data: 'full_name', name: 'full_name'}, {data: 'email', name: 'email'},
-            {data: 'contact_number', name: 'contact_number'}, {data: 'roles', name: 'roles', orderable: false},
+            {data: 'id_number', name: 'id_number'}, {data: 'email', name: 'email'},
+            {data: 'roles', name: 'roles', orderable: false},
             {data: 'status', name: 'is_active', searchable: false}, {data: 'created_at', name: 'created_at'},
             {data: 'action', name: 'action', orderable: false, searchable: false}
         ],
@@ -152,7 +152,7 @@ $(function () {
         $('#editMiddleName').val(account.middle_name || '');
         $('#editLastName').val(account.last_name);
         $('#editEmail').val(account.email);
-        $('#editContactNumber').val(account.contact_number);
+        $('#editIdNumber').val(account.id_number);
         $('#editStatus').val(String(account.is_active));
         $('#editRoles').val(account.roles || []).trigger('change');
         form.querySelectorAll('input[type=password]').forEach(input => input.value = '');

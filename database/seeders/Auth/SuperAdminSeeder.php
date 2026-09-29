@@ -25,11 +25,11 @@ class SuperAdminSeeder extends Seeder
             ['email' => 'superadmin@gmail.com'],
             [
                 'uuid' => (string) Str::uuid(),
+                'id_number' => 'SA-0001',
                 'name' => 'Super Admin',
                 'first_name' => 'Super',
                 'middle_name' => 'System',
                 'last_name' => 'Admin',
-                'contact_number' => '09271852712',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]

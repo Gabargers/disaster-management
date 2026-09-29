@@ -46,7 +46,7 @@ class ActivityLogTest extends TestCase
 
         $this->actingAs($admin)->post(route('accounts.store'), [
             'first_name' => 'Logged', 'last_name' => 'Worker',
-            'email' => 'logged.worker@example.com', 'contact_number' => '09171234567',
+            'email' => 'logged.worker@example.com', 'id_number' => 'LOG-0001',
             'roles' => ['encoder'], 'password' => 'SecretPassword123!',
             'password_confirmation' => 'SecretPassword123!', 'is_active' => '1',
         ])->assertRedirect();

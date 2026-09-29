@@ -24,11 +24,11 @@ class AdminSeeder extends Seeder
             ['email' => 'admin@gmail.com'],
             [
                 'uuid' => (string) Str::uuid(),
+                'id_number' => 'ADM-0001',
                 'name' => 'System Admin',
                 'first_name' => 'System',
                 'middle_name' => 'Test',
                 'last_name' => 'Admin',
-                'contact_number' => '09000000000',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]

@@ -31,6 +31,7 @@ class UserFactory extends Factory
 
         return [
             'name' => "{$firstName} {$lastName}",
+            'id_number' => strtoupper(fake()->unique()->bothify('EMP-####??')),
             'first_name' => $firstName,
             'middle_name' => null,
             'last_name' => $lastName,

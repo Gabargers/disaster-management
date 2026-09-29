@@ -121,11 +121,11 @@ class DisasterRoleSeeder extends Seeder
             ['email' => $email],
             [
                 'uuid' => (string) Str::uuid(),
+                'id_number' => $role === 'paymaster-cashier' ? 'PAY-0001' : 'ENC-0001',
                 'name' => $name,
                 'first_name' => $parts[0] ?? $name,
                 'middle_name' => null,
                 'last_name' => $parts[array_key_last($parts)] ?? $name,
-                'contact_number' => '09000000000',
                 'password' => Hash::make('password'),
                 'is_active' => true,
             ]

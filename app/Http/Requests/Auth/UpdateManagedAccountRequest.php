@@ -25,7 +25,7 @@ class UpdateManagedAccountRequest extends FormRequest
             'middle_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email:rfc', 'max:255', Rule::unique('users', 'email')->ignore($account)],
-            'contact_number' => ['required', 'string', 'regex:/^(?:\+63|0)9\d{9}$/'],
+            'id_number' => ['required', 'string', 'max:50', Rule::unique('users', 'id_number')->ignore($account)],
             'roles' => ['required', 'array', 'size:1'],
             'roles.*' => ['required', 'distinct', Rule::in(StoreManagedAccountRequest::MANAGED_ROLES)],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
@@ -33,10 +33,11 @@ class UpdateManagedAccountRequest extends FormRequest
         ];
     }
 
-    public function messages(): array
+    protected function prepareForValidation(): void
     {
-        return [
-            'contact_number.regex' => 'Enter a valid Philippine mobile number (for example, 09171234567).',
-        ];
+        $this->merge([
+            'id_number' => strtoupper(trim((string) $this->input('id_number'))),
+            'email' => strtolower(trim((string) $this->input('email'))),
+        ]);
     }
 }

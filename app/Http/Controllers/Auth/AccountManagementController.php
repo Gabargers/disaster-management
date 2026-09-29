@@ -34,28 +34,19 @@ class AccountManagementController extends Controller
         $users = User::query()
             ->whereHas('roles', fn ($query) => $query->whereIn('name', StoreManagedAccountRequest::MANAGED_ROLES))
             ->with('roles:id,name')
-            ->select(['users.id', 'users.first_name', 'users.middle_name', 'users.last_name', 'users.email', 'users.contact_number', 'users.is_active', 'users.created_at']);
+            ->select(['users.id', 'users.id_number', 'users.first_name', 'users.middle_name', 'users.last_name', 'users.email', 'users.is_active', 'users.created_at']);
 
         return DataTables::eloquent($users)
-            ->addColumn('full_name', fn (User $user) => collect([$user->first_name, $user->middle_name, $user->last_name])->filter()->join(' '))
             ->addColumn('roles', fn (User $user) => $user->roles
                 ->pluck('name')
                 ->map(fn (string $role) => self::ROLE_LABELS[$role] ?? str($role)->headline())
                 ->join(', '))
-            ->editColumn('contact_number', fn (User $user) => $user->contact_number ?: '—')
+            ->editColumn('id_number', fn (User $user) => $user->id_number ?: '—')
             ->addColumn('status', fn (User $user) => $user->is_active
                 ? '<span class="badge badge-light-success">Active</span>'
                 : '<span class="badge badge-light-danger">Inactive</span>')
             ->editColumn('created_at', fn (User $user) => $user->created_at?->format('M d, Y'))
             ->addColumn('action', fn (User $user) => $this->actionButtons($user))
-            ->filterColumn('full_name', function ($query, string $keyword) {
-                $query->where(function ($query) use ($keyword) {
-                    $query->where('first_name', 'like', "%{$keyword}%")
-                        ->orWhere('middle_name', 'like', "%{$keyword}%")
-                        ->orWhere('last_name', 'like', "%{$keyword}%")
-                        ->orWhere('name', 'like', "%{$keyword}%");
-                });
-            })
             ->rawColumns(['status', 'action'])
             ->toJson();
     }
@@ -71,7 +62,7 @@ class AccountManagementController extends Controller
                 'middle_name' => $data['middle_name'] ?? null,
                 'last_name' => $data['last_name'],
                 'email' => strtolower($data['email']),
-                'contact_number' => $data['contact_number'],
+                'id_number' => $data['id_number'],
                 'password' => $data['password'],
                 'is_active' => $data['is_active'],
             ]);
@@ -94,7 +85,7 @@ class AccountManagementController extends Controller
                 'middle_name' => $data['middle_name'] ?? null,
                 'last_name' => $data['last_name'],
                 'email' => strtolower($data['email']),
-                'contact_number' => $data['contact_number'],
+                'id_number' => $data['id_number'],
                 'is_active' => $data['is_active'],
             ];
 
@@ -132,7 +123,7 @@ class AccountManagementController extends Controller
             'middle_name' => $user->middle_name,
             'last_name' => $user->last_name,
             'email' => $user->email,
-            'contact_number' => $user->contact_number,
+            'id_number' => $user->id_number,
             'is_active' => $user->is_active ? '1' : '0',
             'roles' => $user->roles->pluck('name')->intersect(StoreManagedAccountRequest::MANAGED_ROLES)->values(),
             'update_url' => route('accounts.update', $user),

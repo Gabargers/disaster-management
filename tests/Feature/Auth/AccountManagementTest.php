@@ -29,7 +29,9 @@ class AccountManagementTest extends TestCase
 
             $this->actingAs($user)->get(route('accounts.index'))
                 ->assertOk()
-                ->assertSee('Create Account');
+                ->assertSee('Create Account')
+                ->assertSee('ID Number')
+                ->assertDontSee('Contact Number');
         }
     }
 
@@ -52,7 +54,7 @@ class AccountManagementTest extends TestCase
             'middle_name' => 'Santos',
             'last_name' => 'Dela Cruz',
             'email' => 'encoder@example.com',
-            'contact_number' => '09171234567',
+            'id_number' => ' enc-1001 ',
             'roles' => ['encoder'],
             'password' => 'Temporary123!',
             'password_confirmation' => 'Temporary123!',
@@ -61,7 +63,15 @@ class AccountManagementTest extends TestCase
 
         $account = User::where('email', 'encoder@example.com')->firstOrFail();
         $this->assertSame('Juan Santos Dela Cruz', $account->name);
+        $this->assertSame('ENC-1001', $account->id_number);
         $this->assertTrue($account->hasRole('encoder'));
+
+        $this->actingAs($admin)->getJson(route('accounts.data', [
+            'draw' => 1, 'start' => 0, 'length' => 10,
+        ]))->assertOk()->assertJsonFragment([
+            'id_number' => 'ENC-1001',
+            'email' => 'encoder@example.com',
+        ]);
     }
 
     public function test_admin_cannot_assign_an_administrator_role(): void
@@ -73,7 +83,7 @@ class AccountManagementTest extends TestCase
             'first_name' => 'Other',
             'last_name' => 'Admin',
             'email' => 'other-admin@example.com',
-            'contact_number' => '09171234567',
+            'id_number' => 'ADM-9999',
             'roles' => ['superadmin'],
             'password' => 'Temporary123!',
             'password_confirmation' => 'Temporary123!',
@@ -98,7 +108,7 @@ class AccountManagementTest extends TestCase
             'middle_name' => 'Middle',
             'last_name' => 'Worker',
             'email' => 'updated.worker@example.com',
-            'contact_number' => '09179999999',
+            'id_number' => 'PAY-1001',
             'roles' => ['paymaster-cashier'],
             'password' => '',
             'password_confirmation' => '',
@@ -107,6 +117,7 @@ class AccountManagementTest extends TestCase
 
         $account->refresh();
         $this->assertSame('Updated Middle Worker', $account->name);
+        $this->assertSame('PAY-1001', $account->id_number);
         $this->assertFalse($account->is_active);
         $this->assertTrue(Hash::check('OriginalPassword!', $account->password));
         $this->assertSame(['paymaster-cashier'], $account->getRoleNames()->all());
@@ -134,13 +145,29 @@ class AccountManagementTest extends TestCase
 
         $payload = [
             'first_name' => 'Changed', 'last_name' => 'Admin', 'email' => $admin->email,
-            'contact_number' => '09171234567', 'roles' => ['admin'],
+            'id_number' => $admin->id_number, 'roles' => ['admin'],
             'password' => '', 'password_confirmation' => '', 'is_active' => '1',
         ];
 
         $this->actingAs($admin)->put(route('accounts.update', $admin), $payload)->assertForbidden();
         $this->actingAs($admin)->delete(route('accounts.destroy', $admin))->assertForbidden();
         $this->assertTrue($admin->fresh()->hasRole('admin'));
+    }
+
+    public function test_id_number_must_be_unique(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        User::factory()->create(['id_number' => 'EMP-1000']);
+
+        $this->actingAs($admin)->post(route('accounts.store'), [
+            'first_name' => 'Duplicate', 'last_name' => 'Worker',
+            'email' => 'duplicate.worker@example.com', 'id_number' => ' emp-1000 ',
+            'roles' => ['encoder'], 'password' => 'Temporary123!',
+            'password_confirmation' => 'Temporary123!', 'is_active' => '1',
+        ])->assertSessionHasErrors('id_number');
+
+        $this->assertDatabaseMissing('users', ['email' => 'duplicate.worker@example.com']);
     }
 
     public function test_only_the_three_supported_roles_are_shown(): void
